@@ -122,9 +122,10 @@ bool capture_first_band(const std::wstring& output_png, std::string& error) {
         error="Scanner identification failed: " + result.error; return false;
     }
     Handle device;
-    // The probe has already validated NOVA on the selected USB MagicScan device.
-    // A zero-access handle can permit read-only pass-through without raw disk read rights.
-    device.value=CreateFileA(result.path.c_str(),0,
+    // NOVA was validated against the USB MagicScan device.
+    // The handle requests read/write *permissions* because SCSI pass-through
+    // may require both; only DATA_IN CDBs are sent, never filesystem writes.
+    device.value=CreateFileA(result.path.c_str(),GENERIC_READ | GENERIC_WRITE,
         FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
     if (device.value==INVALID_HANDLE_VALUE) {
         error="Unable to open scanner: Windows error " + std::to_string(GetLastError()); return false;

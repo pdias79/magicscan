@@ -1,36 +1,51 @@
-# MagicScan development
+# MagicScan developer guide
 
-Native C++17 scanner utility for Windows and Linux. This repository is a work in progress.
+MagicScan targets **Windows 10/11 (x64)** using C++17 and native Win32/GDI+ APIs. No Python, Qt, FLTK or .NET runtime is required.
 
-The current milestone is **a read-only USB identification probe**, not an image capture application. The Linux backend and FLTK interface are planned, not yet implemented.
+Current capabilities:
+- `magicscan --probe`: read-only SCSI identification (expected `NOVA`); needs a connected scanner.
+- `magicscan --preview scan.png`: native image preview with selection, zoom, pan, clipboard copy and PNG export.
 
-## Windows setup
+**Not yet implemented in C++:** continuous USB image capture, automatic background monitoring, user-configured output directory, and automatic opening of the preview after scan. The previously established USB acquisition protocol is specified in `docs/usb-protocol.md`.
 
-Install [Visual Studio Community](https://visualstudio.microsoft.com/) or Visual Studio Build Tools with the **Desktop development with C++** workload (MSVC and Windows SDK), [CMake](https://cmake.org/download/), [Git](https://git-scm.com/downloads), and [VS Code](https://code.visualstudio.com/).
+## Set up VS Code
 
-In VS Code install **C/C++** and **CMake Tools**. Open the cloned repository folder. Use the command palette to choose **CMake: Select a Kit** (Visual Studio x64) and **CMake: Configure**, then **CMake: Build**.
-
-Alternatively, in the *Developer PowerShell for VS 2022* terminal:
+Install Git, VS Code, and Visual Studio 2022 Build Tools with the **Desktop development with C++** workload, including the MSVC compiler and Windows SDK. VS Code extensions: **C/C++** and **CMake Tools**.
 
 ```powershell
-cmake -S . -B build
-cmake --build build --config Debug
-.\build\Debug\magicscan.exe --probe
+git clone https://github.com/pdias79/magicscan.git
+cd magicscan
+git switch feature/bootstrap-cpp
+code .
 ```
 
-Run `magicscan --probe` first from a **normal, non-elevated** terminal. If the device is not accessible, report the complete console output. Do not run the entire desktop application as administrator as a workaround.
+In VS Code run **CMake: Select a Kit** (Visual Studio x64), **CMake: Configure**, then **CMake: Build**.
 
-## Linux
+In a Visual Studio Developer PowerShell:
 
-```sh
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
-./build/magicscan --help
+```powershell
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan.exe --help
+.\build\Release\magicscan.exe --probe
+.\build\Release\magicscan.exe --preview "C:\Scans\example.png"
 ```
 
-Linux build currently provides a clear "not implemented" message for the SCSI probe. A future backend will use SG_IO; no `sudo` workflow is provided yet.
+### Preview controls
+
+- Left mouse drag: draw a rectangular selection.
+- Right mouse drag: pan image.
+- Mouse wheel: zoom around cursor.
+- Ctrl+C: copy selected image, or whole image if selection is cleared, to Windows clipboard.
+- Ctrl+S: save selection/whole image as PNG.
+- Ctrl+A: clear selection (use the whole image).
+
+Run `--probe` from a normal **non-administrator** terminal and report its complete output. Probe access may still be restricted by Windows device permissions. Do not change scanner USB drivers or send write commands.
+
+## Build status
+
+GitHub Actions builds the Windows x64 executable and uploads it as a build artifact. A successful automated build validates compilation; hardware behavior and graphical interaction still require local testing.
 
 ## Privacy
 
-Do not commit captured images, USB packet traces, or private scan logs. See `docs/usb-protocol.md` for the protocol specification.
+Do not commit USB traces, captured scan images, or logs containing private data. The protocol specification is based on USB traffic reverse engineering only.

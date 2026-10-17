@@ -1,4 +1,5 @@
 #include "usb/probe.hpp"
+#include "usb/capture.hpp"
 #include "gui/preview.hpp"
 #include <windows.h>
 #include <iostream>
@@ -11,15 +12,25 @@ int wmain(int argc, wchar_t** argv) {
                   << "Usage:\n"
                   << "  magicscan --probe               Read-only NOVA identification\n"
                   << "  magicscan --preview image.png  Native image viewer/crop tool\n"
+                  << "  magicscan --capture-band out.png  Read one fresh scanner strip (experimental)\n"
                   << "Viewer: left drag to select, right drag to pan, wheel to zoom,\n"
                   << "Ctrl+C to copy selection, Ctrl+S to save PNG, Ctrl+A to select all.\n"
-                  << "Continuous scanning is not implemented in this C++ build yet.\n";
+                  << "Full-page scanning is not implemented in this C++ build yet.\n";
         return 0;
     }
     if (arg == L"--preview" && argc == 3) {
         // Windows provides Unicode command-line arguments directly.
         // No locale-dependent ANSI/UTF-8 conversion is needed.
         return magicscan::show_preview(argv[2]);
+    }
+    if (arg == L"--capture-band" && argc == 3) {
+        std::string error;
+        if (!magicscan::capture_first_band(argv[2], error)) {
+            std::cerr << "Band capture failed: " << error << "\n";
+            return 1;
+        }
+        std::cout << "Saved first image band to PNG.\n";
+        return 0;
     }
     if (arg != L"--probe" || argc != 2) {
         std::cerr << "Unknown option. Try --help\n";

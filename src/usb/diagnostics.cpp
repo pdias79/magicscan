@@ -38,9 +38,10 @@ void list_disk_devices() {
         DWORD bytes = 0;
         const BOOL ok = DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY,
             &query, sizeof(query), buffer.data(), static_cast<DWORD>(buffer.size()), &bytes, nullptr);
+        const DWORD query_error = ok ? ERROR_SUCCESS : GetLastError();
         CloseHandle(handle);
         if (!ok) {
-            std::cout << path << " | Query error " << GetLastError() << "\n";
+            std::cout << path << " | Query error " << query_error << "\n";
             continue;
         }
         if (bytes < sizeof(STORAGE_DEVICE_DESCRIPTOR)) {

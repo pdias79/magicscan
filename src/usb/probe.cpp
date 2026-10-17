@@ -82,10 +82,11 @@ ProbeResult probe_scanner() {
         if (bytes < sizeof(STORAGE_DEVICE_DESCRIPTOR)) continue;
         auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(storage.data());
         auto contains = [&](DWORD offset, const char* text) {
-            return offset != 0 && offset < bytes &&
-                   std::string(reinterpret_cast<const char*>(storage.data() + offset),
-                               std::string_view(reinterpret_cast<const char*>(storage.data() + offset), bytes - offset).find('\0'))
-                           .find(text) != std::string::npos;
+            if (offset == 0 || offset >= bytes) return false;
+            const char* start = reinterpret_cast<const char*>(storage.data() + offset);
+            size_t length = 0;
+            while (length < bytes - offset && start[length] != '\0') ++length;
+            return std::string(start, length).find(text) != std::string::npos;
         };
         if (!(contains(descriptor->ProductIdOffset, "MagicScan") ||
               contains(descriptor->ProductIdOffset, "MAGICSCAN"))) continue;

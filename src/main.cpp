@@ -14,9 +14,10 @@ int wmain(int argc, wchar_t** argv) {
                   << "  magicscan --list-disks          Show Windows disk metadata (no SCSI probe)\n"
                   << "  magicscan --preview image.png  Native image viewer/crop tool\n"
                   << "  magicscan --capture-band out.png  Read one fresh scanner strip (experimental)\n"
+                  << "  magicscan --capture-page out.png  Assemble a complete scan (experimental)\n"
                   << "Viewer: left drag to select, right drag to pan, wheel to zoom,\n"
                   << "Ctrl+C to copy selection, Ctrl+S to save PNG, Ctrl+A to select all.\n"
-                  << "Full-page scanning is not implemented in this C++ build yet.\n";
+                  << "Full-page scanning requires hardware validation.\n";
         return 0;
     }
     if (arg == L"--preview" && argc == 3) {
@@ -26,6 +27,14 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (arg == L"--list-disks" && argc == 2) {
         magicscan::list_disk_devices();
+        return 0;
+    }
+    if (arg == L"--capture-page" && argc == 3) {
+        std::string error;
+        if (!magicscan::capture_page(argv[2], error)) {
+            std::cerr << "Page capture failed: " << error << "\n";
+            return 1;
+        }
         return 0;
     }
     if (arg == L"--capture-band" && argc == 3) {

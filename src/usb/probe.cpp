@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 
 namespace magicscan {
 namespace {
@@ -18,13 +19,11 @@ struct Handle {
     HANDLE h = INVALID_HANDLE_VALUE;
     ~Handle() { if (h != INVALID_HANDLE_VALUE) CloseHandle(h); }
 };
-#pragma pack(push, 1)
 struct Command {
     SCSI_PASS_THROUGH_DIRECT pass{};
     ULONG filler = 0;
     UCHAR sense[32]{};
 };
-#pragma pack(pop)
 
 bool identify(HANDLE disk, std::string& error) {
     // C5 07 ... transfer length 4, FF02: observed to return ASCII NOVA.
@@ -85,7 +84,7 @@ ProbeResult probe_scanner() {
         auto contains = [&](DWORD offset, const char* text) {
             return offset != 0 && offset < bytes &&
                    std::string(reinterpret_cast<const char*>(storage.data() + offset),
-                               strnlen(reinterpret_cast<const char*>(storage.data() + offset), bytes - offset))
+                               std::string_view(reinterpret_cast<const char*>(storage.data() + offset), bytes - offset).find('\0'))
                            .find(text) != std::string::npos;
         };
         if (!(contains(descriptor->ProductIdOffset, "MagicScan") ||

@@ -34,6 +34,12 @@ std::unique_ptr<Bitmap> crop(Viewer& v) {
     if (r.Width <= 0 || r.Height <= 0) return {};
     return std::unique_ptr<Bitmap>(v.image->Clone(r, PixelFormat32bppARGB));
 }
+void zoom_at(Viewer& v, POINT point, double factor) {
+    const double previous = v.zoom;
+    v.zoom = std::clamp(previous * factor, 0.05, 15.0);
+    v.ox = point.x - (point.x - v.ox) * v.zoom / previous;
+    v.oy = point.y - (point.y - v.oy) * v.zoom / previous;
+}
 void copy_selection(HWND hwnd, Viewer& v) {
     auto bitmap = crop(v);
     if (!bitmap || bitmap->GetLastStatus() != Ok) return;
@@ -81,31 +87,62 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(
             reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams));
         return 0;
+    case WM_ERASEBKGND:
+        // The entire client area is painted off-screen during WM_PAINT.
+        return 1;
     case WM_PAINT: {
-        PAINTSTRUCT ps{}; HDC hdc = BeginPaint(hwnd, &ps);
-        RECT client{}; GetClientRect(hwnd, &client);
-        HBRUSH bg = CreateSolidBrush(RGB(42, 42, 42)); FillRect(hdc, &client, bg); DeleteObject(bg);
-        if (v && v->image) {
-            Graphics graphics(hdc);
-            graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-            graphics.DrawImage(v->image.get(), static_cast<REAL>(v->ox), static_cast<REAL>(v->oy),
-                               static_cast<REAL>(v->image->GetWidth() * v->zoom),
-                               static_cast<REAL>(v->image->GetHeight() * v->zoom));
-            if (v->has_selection || v->selecting) {
-                Rect r = selection(*v);
-                Pen pen(Color(255, 0, 155, 220), 2);
-                graphics.DrawRectangle(&pen, static_cast<REAL>(v->ox + r.X*v->zoom),
-                    static_cast<REAL>(v->oy + r.Y*v->zoom),
-                    static_cast<REAL>(r.Width*v->zoom), static_cast<REAL>(r.Height*v->zoom));
+        PAINTSTRUCT ps{};
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT client{};
+        GetClientRect(hwnd, &client);
+        const int width = client.right - client.left;
+        const int height = client.bottom - client.top;
+        if (width <= 0 || height <= 0) {
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+
+        HDC memory_dc = CreateCompatibleDC(hdc);
+        HBITMAP back_buffer = memory_dc ? CreateCompatibleBitmap(hdc, width, height) : nullptr;
+        HGDIOBJ previous_bitmap = back_buffer ? SelectObject(memory_dc, back_buffer) : nullptr;
+        HDC paint_dc = previous_bitmap ? memory_dc : hdc;
+
+        HBRUSH bg = CreateSolidBrush(RGB(42, 42, 42));
+        FillRect(paint_dc, &client, bg);
+        DeleteObject(bg);
+        {
+            // Complete GDI+ drawing before copying the back buffer to the screen.
+            if (v && v->image) {
+                Graphics graphics(paint_dc);
+                graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+                graphics.DrawImage(v->image.get(), static_cast<REAL>(v->ox), static_cast<REAL>(v->oy),
+                                   static_cast<REAL>(v->image->GetWidth() * v->zoom),
+                                   static_cast<REAL>(v->image->GetHeight() * v->zoom));
+                if (v->has_selection || v->selecting) {
+                    Rect r = selection(*v);
+                    Pen pen(Color(255, 0, 155, 220), 2);
+                    graphics.DrawRectangle(&pen, static_cast<REAL>(v->ox + r.X*v->zoom),
+                        static_cast<REAL>(v->oy + r.Y*v->zoom),
+                        static_cast<REAL>(r.Width*v->zoom), static_cast<REAL>(r.Height*v->zoom));
+                }
             }
         }
-        EndPaint(hwnd, &ps); return 0;
+        if (previous_bitmap) {
+            BitBlt(hdc, 0, 0, width, height, memory_dc, 0, 0, SRCCOPY);
+            SelectObject(memory_dc, previous_bitmap);
+        }
+        if (back_buffer) DeleteObject(back_buffer);
+        if (memory_dc) DeleteDC(memory_dc);
+        EndPaint(hwnd, &ps);
+        return 0;
     }
     case WM_LBUTTONDOWN:
+        SetFocus(hwnd);
         if (v) { v->begin = v->end = {GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
                  v->selecting = true; v->has_selection = false; SetCapture(hwnd); }
         return 0;
     case WM_RBUTTONDOWN:
+        SetFocus(hwnd);
         if (v) { v->last = {GET_X_LPARAM(lp),GET_Y_LPARAM(lp)}; v->panning = true; SetCapture(hwnd); }
         return 0;
     case WM_MOUSEMOVE:
@@ -127,18 +164,34 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOUSEWHEEL:
         if (v) {
             POINT point{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)}; ScreenToClient(hwnd,&point);
-            double previous = v->zoom;
-            v->zoom = std::clamp(previous * (GET_WHEEL_DELTA_WPARAM(wp) > 0 ? 1.2 : 1/1.2), 0.05, 15.0);
-            v->ox = point.x - (point.x-v->ox)*v->zoom/previous;
-            v->oy = point.y - (point.y-v->oy)*v->zoom/previous;
+            zoom_at(*v, point, GET_WHEEL_DELTA_WPARAM(wp) > 0 ? 1.2 : 1.0 / 1.2);
             InvalidateRect(hwnd,nullptr,FALSE);
         } return 0;
     case WM_KEYDOWN:
-        if (v && (GetKeyState(VK_CONTROL) & 0x8000)) {
-            if (wp == 'C') copy_selection(hwnd,*v);
-            else if (wp == 'S') save_selection(hwnd,*v);
-            else if (wp == 'A') { v->has_selection = false; InvalidateRect(hwnd,nullptr,FALSE); }
-        } return 0;
+        if (v) {
+            const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (ctrl) {
+                if (wp == 'C') copy_selection(hwnd, *v);
+                else if (wp == 'S') save_selection(hwnd, *v);
+                else if (wp == 'A') {
+                    v->has_selection = false;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+                return 0;
+            }
+            double factor = 0.0;
+            if (wp == VK_ADD || wp == VK_OEM_PLUS) factor = 1.2;
+            else if (wp == VK_SUBTRACT || wp == VK_OEM_MINUS) factor = 1.0 / 1.2;
+            if (factor != 0.0) {
+                RECT rc{};
+                GetClientRect(hwnd, &rc);
+                const POINT center{(rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2};
+                zoom_at(*v, center, factor);
+                InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            }
+        }
+        break;
     case WM_DESTROY: PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
@@ -159,7 +212,7 @@ int show_preview(const std::wstring& file_path) {
     wc.hCursor = LoadCursor(nullptr, IDC_CROSS);
     RegisterClassW(&wc);
     HWND hwnd = CreateWindowExW(0,wc.lpszClassName,
-        L"MagicScan - Drag: select  |  Right drag: pan  |  Wheel: zoom  |  Ctrl+C: copy  |  Ctrl+S: save",
+        L"MagicScan - Drag: select  |  Right drag: pan  |  Wheel/+/-: zoom  |  Ctrl+C: copy  |  Ctrl+S: save",
         WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,1100,820,
         nullptr,nullptr,instance,&state);
     if (!hwnd) { GdiplusShutdown(token); return 1; }

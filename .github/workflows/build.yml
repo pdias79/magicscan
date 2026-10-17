@@ -1,0 +1,21 @@
+name: Windows Build
+on:
+  push:
+    branches: [main, feature/bootstrap-cpp]
+  pull_request:
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: magicscan-win64-preview
+          path: build/Release/magicscan.exe

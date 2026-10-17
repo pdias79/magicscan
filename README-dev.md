@@ -4,6 +4,7 @@ MagicScan targets **Windows 10/11 (x64)** using C++17 and native Win32/GDI+ APIs
 
 Current capabilities:
 - `magicscan --probe`: read-only SCSI identification (expected `NOVA`); needs a connected scanner.
+- `magicscan --list-disks`: print storage device descriptors and open/query errors **without issuing any vendor SCSI commands**. Use to diagnose scanner discovery without administrator privileges. Redact disk serial numbers before sharing output.
 - `magicscan --preview scan.png`: native image preview with selection, zoom, pan, clipboard copy and PNG export.
 - `magicscan --capture-band out.png`: experimental **read-only** capture of one fresh 2592×192 RGB strip. Start a scan after launching the command; it waits up to 60 seconds. This is a diagnostic milestone, not a full-page scan.
 
@@ -28,6 +29,7 @@ In a Visual Studio Developer PowerShell:
 cmake -S . -B build -A x64
 cmake --build build --config Release
 .\build\Release\magicscan.exe --help
+.\build\Release\magicscan.exe --list-disks
 .\build\Release\magicscan.exe --probe
 .\build\Release\magicscan.exe --capture-band "C:\Scans\band.png"
 .\build\Release\magicscan.exe --preview "C:\Scans\example.png"

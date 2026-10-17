@@ -4,9 +4,9 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char** argv) {
-    const std::string arg = argc > 1 ? argv[1] : "--help";
-    if (arg == "--help" || arg == "-h") {
+int wmain(int argc, wchar_t** argv) {
+    const std::wstring arg = argc > 1 ? argv[1] : L"--help";
+    if (arg == L"--help" || arg == L"-h") {
         std::cout << "MagicScan 0.2 (Windows-native prototype)\n"
                   << "Usage:\n"
                   << "  magicscan --probe               Read-only NOVA identification\n"
@@ -16,14 +16,12 @@ int main(int argc, char** argv) {
                   << "Continuous scanning is not implemented in this C++ build yet.\n";
         return 0;
     }
-    if (arg == "--preview" && argc == 3) {
-        int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argv[2], -1, nullptr, 0);
-        if (!length) { std::cerr << "Invalid UTF-8 image path\n"; return 2; }
-        std::wstring path(static_cast<size_t>(length), L'\0');
-        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, argv[2], -1, path.data(), length);
-        return magicscan::show_preview(path);
+    if (arg == L"--preview" && argc == 3) {
+        // Windows provides Unicode command-line arguments directly.
+        // No locale-dependent ANSI/UTF-8 conversion is needed.
+        return magicscan::show_preview(argv[2]);
     }
-    if (arg != "--probe" || argc != 2) {
+    if (arg != L"--probe" || argc != 2) {
         std::cerr << "Unknown option. Try --help\n";
         return 2;
     }

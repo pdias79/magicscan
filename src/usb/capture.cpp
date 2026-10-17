@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -114,6 +115,116 @@ bool write_png(const std::wstring& file, const std::vector<uint8_t>& planar, std
     Gdiplus::GdiplusShutdown(token);
     return success;
 }
+
+bool write_page_png(const std::wstring& file, const std::vector<uint8_t>& pixels,
+                    size_t bands, std::string& error) {
+    if (bands == 0 || bands > static_cast<size_t>(std::numeric_limits<INT>::max() / kLines)) {
+        error = "Invalid page height"; return false;
+    }
+    const INT height = static_cast<INT>(bands * kLines);
+    Gdiplus::GdiplusStartupInput input{};
+    ULONG_PTR token = 0;
+    if (Gdiplus::GdiplusStartup(&token, &input, nullptr) != Gdiplus::Ok) {
+        error = "Cannot initialize GDI+"; return false;
+    }
+    bool saved = false;
+    {
+        Gdiplus::Bitmap bitmap(kWidth, height, PixelFormat24bppRGB);
+        if (bitmap.GetLastStatus() != Gdiplus::Ok) {
+            error = "Unable to allocate full-page bitmap";
+        } else {
+            Gdiplus::Rect rect(0, 0, kWidth, height);
+            Gdiplus::BitmapData data{};
+            if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeWrite,
+                                PixelFormat24bppRGB, &data) == Gdiplus::Ok) {
+                const size_t stride = static_cast<size_t>(kWidth) * 3;
+                for (INT y = 0; y < height; ++y) {
+                    uint8_t* destination = static_cast<uint8_t*>(data.Scan0) +
+                                           static_cast<ptrdiff_t>(y) * data.Stride;
+                    std::memcpy(destination, pixels.data() + static_cast<size_t>(y) * stride, stride);
+                }
+                bitmap.UnlockBits(&data);
+                CLSID encoder{};
+                if (png_codec(encoder) && bitmap.Save(file.c_str(), &encoder) == Gdiplus::Ok)
+                    saved = true;
+                else error = "Could not encode or save page PNG";
+            } else error = "Could not lock full-page bitmap";
+        }
+    }
+    Gdiplus::GdiplusShutdown(token);
+    return saved;
+}
+bool read_band(HANDLE device, uint32_t address, std::vector<uint8_t>& page,
+               std::string& error) {
+    if (uint64_t(address) + kBandSize > std::numeric_limits<uint32_t>::max()) {
+        error = "Scanner memory address is outside 32-bit range"; return false;
+    }
+    alignas(16) std::array<uint8_t,16> a{},b{};
+    if (!read_scsi(device, meta(0x10,0xFF,0x04), a.data(), 16, error) ||
+        !read_scsi(device, meta(0x10,0xFF,0x06), b.data(), 16, error))
+        return false;
+    std::vector<uint8_t> planar(kBandSize);
+    alignas(16) std::array<uint8_t,kMaxChunk> scratch{};
+    for (uint32_t offset = 0; offset < kBandSize;) {
+        const uint32_t count = std::min(kMaxChunk, kBandSize - offset);
+        std::array<uint8_t,16> cdb{};
+        cdb[0] = 0xC3; cdb[1] = 0x07;
+        store_be32(cdb.data()+2, address+offset);
+        store_be32(cdb.data()+6, count);
+        if (!read_scsi(device,cdb,scratch.data(),count,error)) return false;
+        std::memcpy(planar.data()+offset,scratch.data(),count);
+        offset += count;
+    }
+    // Convert each planar RGB scanline to mirrored, interleaved BGR for GDI+.
+    const size_t initial = page.size();
+    page.resize(initial + kBandSize);
+    for (uint32_t y=0; y<kLines; ++y) {
+        const uint8_t* row = planar.data()+static_cast<size_t>(y)*kWidth*3;
+        uint8_t* dst = page.data()+initial+static_cast<size_t>(y)*kWidth*3;
+        for (uint32_t x=0; x<kWidth; ++x) {
+            const uint32_t src=kWidth-1-x;
+            dst[x*3] = row[kWidth*2+src];
+            dst[x*3+1] = row[kWidth+src];
+            dst[x*3+2] = row[src];
+        }
+    }
+    return true;
+}
+bool poll_band(HANDLE device, uint32_t& ready, uint32_t& address, std::string& error) {
+    alignas(16) std::array<uint8_t,52> first{}, last{};
+    alignas(16) std::array<uint8_t,16> middle{};
+    if (!read_scsi(device, meta(0x34,0x02,0x01,0x01), first.data(),52,error) ||
+        !read_scsi(device, meta(0x10,0xFF,0x04),middle.data(),16,error) ||
+        !read_scsi(device, meta(0x34,0x02,0x02,0x01),last.data(),52,error))
+        return false;
+    ready = read_le32(last.data());
+    address = read_le32(last.data()+20);
+    if (ready == 1 && (read_le32(last.data()+12)!=kWidth ||
+                       read_le32(last.data()+16)!=kLines)) {
+        error="Unexpected image dimensions in scanner metadata";
+        return false;
+    }
+    return true;
+}
+bool poll_button(HANDLE device, bool& scanning, std::string& error) {
+    alignas(16) std::array<uint8_t,16> extra{};
+    alignas(16) std::array<uint8_t,4> status{};
+    // The status inquiry must be issued in its established context.
+    const std::array<std::array<uint8_t,16>,9> commands = {{
+        meta(0x10,0xFF,0x04), meta(0x10,0xFF,0x03),
+        meta(0x10,0xFF,0x03), meta(0x10,0xFF,0x05),
+        meta(0x04,0x02,0x01), meta(0x10,0xFF,0x04),
+        meta(0x04,0x02,0x02), meta(0x10,0xFF,0x04),
+        meta(0x10,0xFF,0x06)
+    }};
+    for (size_t i=0;i<commands.size();++i) {
+        const bool short_reply = i == 4 || i == 6;
+        if (!read_scsi(device,commands[i],short_reply ? status.data() : extra.data(),
+                       short_reply ? 4 : 16,error)) return false;
+        if (i==6) scanning=read_le32(status.data())==1;
+    }
+    return true;
+}
 } // namespace
 
 bool capture_first_band(const std::wstring& output_png, std::string& error) {
@@ -175,5 +286,90 @@ bool capture_first_band(const std::wstring& output_png, std::string& error) {
         offset+=amount;
     }
     return write_png(output_png,strip,error);
+}
+
+bool capture_page(const std::wstring& output_png, std::string& error) {
+    const auto scanner = probe_scanner();
+    if (!scanner.found || !scanner.nova) {
+        error = "Scanner identification failed: " + scanner.error;
+        return false;
+    }
+    Handle device;
+    device.value = CreateFileA(scanner.path.c_str(), GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (device.value == INVALID_HANDLE_VALUE) {
+        error = "Scanner open failed: Windows error " + std::to_string(GetLastError());
+        return false;
+    }
+    using Clock = std::chrono::steady_clock;
+    const auto started = Clock::now();
+    // Generous emergency guard, not a page-height limit.
+    const auto deadline = started + std::chrono::minutes(5);
+    auto last_band = started;
+    auto previous_active = started;
+    bool active = false;
+    bool seen_idle = false;
+    bool band_was_ready = false;
+    bool session_started = false;
+    bool stop_seen = false;
+    uint32_t last_address = 0;
+    std::vector<uint8_t> pixels;
+    constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
+    std::cout << "Ready. Press SCAN to begin, press SCAN again to finish.\n" << std::flush;
+    while (Clock::now() < deadline) {
+        bool scanning = false;
+        if (!poll_button(device.value, scanning, error)) return false;
+        if (scanning && !active) {
+            session_started = true;
+            stop_seen = false;
+            std::cout << "Scan started\n" << std::flush;
+        }
+        if (!scanning && active && session_started) {
+            stop_seen = true;
+            previous_active = Clock::now();
+            std::cout << "Scan stopped; draining pending bands\n" << std::flush;
+        }
+        active = scanning;
+
+        uint32_t ready=0, address=0;
+        if (!poll_band(device.value,ready,address,error)) return false;
+        if (ready==0) {
+            seen_idle = true;
+            band_was_ready = false;
+        }
+        // Avoid reading the same ready state repeatedly. A changed non-zero
+        // address is treated as new, but equal address requires a ready=0 edge.
+        if (ready==1 && address!=0 && seen_idle && session_started &&
+            (!band_was_ready || address!=last_address)) {
+            if (pixels.size()+kBandSize>kMaxPageBytes) {
+                error="Page exceeds 256 MiB safety memory budget"; return false;
+            }
+            if (!read_band(device.value,address,pixels,error)) return false;
+            last_band=Clock::now();
+            last_address=address;
+            band_was_ready=true;
+            std::cout << "Band " << (pixels.size()/kBandSize) << " read\n" << std::flush;
+        }
+        if (stop_seen && !pixels.empty() &&
+            Clock::now()-std::max(last_band,previous_active)>=std::chrono::seconds(2))
+            break;
+        if (stop_seen && pixels.empty() &&
+            Clock::now()-previous_active>=std::chrono::seconds(5)) {
+            error="Scan ended but no image bands were captured"; return false;
+        }
+        Sleep(60);
+    }
+    if (pixels.empty()) {
+        error="Timed out without capturing any image strips"; return false;
+    }
+    if (!stop_seen) {
+        error="Scan did not complete within the capture timeout; no truncated PNG was saved";
+        return false;
+    }
+    const size_t bands=pixels.size()/kBandSize;
+    if (!write_page_png(output_png,pixels,bands,error)) return false;
+    std::cout << "Saved " << bands << " bands (" << kWidth << "x" << bands*kLines
+              << ") to PNG\n";
+    return true;
 }
 } // namespace magicscan

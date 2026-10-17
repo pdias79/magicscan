@@ -1,0 +1,14 @@
+build/
+cmake-build-*/
+.vs/
+*.obj
+*.o
+*.exe
+*.dll
+*.so
+*.dylib
+*.pcap
+*.pcapng
+*.pcapng.gz
+Capture_*/
+Resultat-*.txt

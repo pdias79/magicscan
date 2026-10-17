@@ -6,9 +6,10 @@ Current capabilities:
 - `magicscan --probe`: read-only SCSI identification (expected `NOVA`); needs a connected scanner.
 - `magicscan --list-disks`: print storage device descriptors and open/query errors **without issuing any vendor SCSI commands**. Use to diagnose scanner discovery without administrator privileges. Redact disk serial numbers before sharing output.
 - `magicscan --preview scan.png`: native image preview with selection, zoom, pan, clipboard copy and PNG export.
-- `magicscan --capture-band out.png`: experimental **read-only** capture of one fresh 2592×192 RGB strip. Start a scan after launching the command; it waits up to 60 seconds. This is a diagnostic milestone, not a full-page scan.
+- `magicscan --capture-band out.png`: validated **read-only** capture of one fresh 2592×192 RGB strip (requires elevated PowerShell on currently tested Windows setup).
+- `magicscan --capture-page out.png`: **experimental, hardware validation pending**. Start the command first, press SCAN to begin scanning, press SCAN a second time to stop; strips are assembled vertically into one PNG. The reader waits for pending data after stop and requires scanner access as administrator on the tested system.
 
-**Not yet implemented in C++:** full-page USB image capture, automatic background monitoring, user-configured output directory, and automatic opening of the preview after scan. The previously established USB acquisition protocol is specified in `docs/usb-protocol.md`.
+**Not yet implemented in C++:** automated background monitoring, user-configured output directory, and automatic preview after scan. Full-page capture is experimental and not yet validated on actual hardware. The previously established USB acquisition protocol is specified in `docs/usb-protocol.md`.
 
 ## Set up VS Code
 
@@ -32,6 +33,7 @@ cmake --build build --config Release
 .\build\Release\magicscan.exe --list-disks
 .\build\Release\magicscan.exe --probe
 .\build\Release\magicscan.exe --capture-band "C:\Scans\band.png"
+.\build\Release\magicscan.exe --capture-page "C:\Scans\page.png"
 .\build\Release\magicscan.exe --preview "C:\Scans\example.png"
 ```
 
@@ -44,7 +46,7 @@ cmake --build build --config Release
 - Ctrl+S: save selection/whole image as PNG.
 - Ctrl+A: clear selection (use the whole image).
 
-Run `--probe` from a normal **non-administrator** terminal and report its complete output. Probe access may still be restricted by Windows device permissions. Do not change scanner USB drivers or send write commands.
+On the tested Windows system, the scanner requires an elevated terminal and a `GENERIC_READ | GENERIC_WRITE` handle for SCSI pass-through. The application sends **only DATA_IN SCSI commands**, not writes to scanner memory or its microSD filesystem. Avoid changing scanner drivers.
 
 ## Build status
 

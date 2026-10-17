@@ -11,6 +11,7 @@ int wmain(int argc, wchar_t** argv) {
         std::cout << "MagicScan 0.2 (Windows-native prototype)\n"
                   << "Usage:\n"
                   << "  magicscan --probe               Read-only NOVA identification\n"
+                  << "  magicscan --list-disks          Show Windows disk metadata (no SCSI probe)\n"
                   << "  magicscan --preview image.png  Native image viewer/crop tool\n"
                   << "  magicscan --capture-band out.png  Read one fresh scanner strip (experimental)\n"
                   << "Viewer: left drag to select, right drag to pan, wheel to zoom,\n"
@@ -22,6 +23,10 @@ int wmain(int argc, wchar_t** argv) {
         // Windows provides Unicode command-line arguments directly.
         // No locale-dependent ANSI/UTF-8 conversion is needed.
         return magicscan::show_preview(argv[2]);
+    }
+    if (arg == L"--list-disks" && argc == 2) {
+        magicscan::list_disk_devices();
+        return 0;
     }
     if (arg == L"--capture-band" && argc == 3) {
         std::string error;

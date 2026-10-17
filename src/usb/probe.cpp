@@ -64,23 +64,23 @@ bool identify(HANDLE disk, std::string& error) {
 
 ProbeResult probe_scanner() {
     ProbeResult result;
-    // This first probe deliberately does not write or change USB drivers.
-    // Avoid probing arbitrary disks with vendor-specific commands: filter by device descriptor first.
+    // Discover via zero-access metadata handles; ordinary accounts often cannot
+    // request GENERIC_READ on a raw PhysicalDrive even for a USB scanner.
     for (int i = 0; i < 32; ++i) {
         const std::string path = "\\\\.\\PhysicalDrive" + std::to_string(i);
-        Handle disk;
-        disk.h = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                             nullptr, OPEN_EXISTING, 0, nullptr);
-        if (disk.h == INVALID_HANDLE_VALUE) continue;
-        std::array<unsigned char, 1024> storage{};
+        Handle metadata;
+        metadata.h = CreateFileA(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 nullptr, OPEN_EXISTING, 0, nullptr);
+        if (metadata.h == INVALID_HANDLE_VALUE) continue;
+        alignas(STORAGE_DEVICE_DESCRIPTOR) std::array<unsigned char, 1024> storage{};
         STORAGE_PROPERTY_QUERY query{};
         query.PropertyId = StorageDeviceProperty;
         query.QueryType = PropertyStandardQuery;
         DWORD bytes = 0;
-        if (!DeviceIoControl(disk.h, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query),
+        if (!DeviceIoControl(metadata.h, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query),
                              storage.data(), static_cast<DWORD>(storage.size()), &bytes, nullptr)) continue;
         if (bytes < sizeof(STORAGE_DEVICE_DESCRIPTOR)) continue;
-        auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(storage.data());
+        const auto* descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR*>(storage.data());
         auto contains = [&](DWORD offset, const char* text) {
             if (offset == 0 || offset >= bytes) return false;
             const char* start = reinterpret_cast<const char*>(storage.data() + offset);
@@ -88,14 +88,38 @@ ProbeResult probe_scanner() {
             while (length < bytes - offset && start[length] != '\0') ++length;
             return std::string(start, length).find(text) != std::string::npos;
         };
-        if (!(contains(descriptor->ProductIdOffset, "MagicScan") ||
+        if (descriptor->BusType != BusTypeUsb ||
+            !(contains(descriptor->ProductIdOffset, "MagicScan") ||
               contains(descriptor->ProductIdOffset, "MAGICSCAN"))) continue;
+
         result.found = true;
         result.path = path;
-        result.nova = identify(disk.h, result.error);
+
+        // Only send NOVA after matching BOTH USB bus and MagicScan product name.
+        // Try the least privileged handle first.
+        std::string no_access_error;
+        if (identify(metadata.h, no_access_error)) {
+            result.nova = true;
+            return result;
+        }
+        Handle reading;
+        reading.h = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                nullptr, OPEN_EXISTING, 0, nullptr);
+        if (reading.h == INVALID_HANDLE_VALUE) {
+            result.error = "MagicScan detected at " + path +
+                           ", but SCSI on zero-access handle failed (" + no_access_error +
+                           ") and GENERIC_READ open failed (" + win_error(GetLastError()) + ")";
+            return result;
+        }
+        std::string read_error;
+        result.nova = identify(reading.h, read_error);
+        if (!result.nova)
+            result.error = "MagicScan detected at " + path +
+                           ", but SCSI failed: zero-access [" + no_access_error +
+                           "]; read-access [" + read_error + "]";
         return result;
     }
-    result.error = "No accessible PhysicalDrive with MagicScan product ID. Try non-admin first; report Access denied if applicable.";
+    result.error = "No USB PhysicalDrive with MagicScan product ID found via zero-access metadata query.";
     return result;
 }
 } // namespace magicscan

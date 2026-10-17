@@ -168,6 +168,7 @@ int show_preview(const std::wstring& file_path) {
     while (GetMessageW(&message,nullptr,0,0)>0) {
         TranslateMessage(&message); DispatchMessageW(&message);
     }
+    state.image.reset();
     GdiplusShutdown(token);
     return 0;
 }

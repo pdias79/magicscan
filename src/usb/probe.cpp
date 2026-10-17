@@ -112,11 +112,27 @@ ProbeResult probe_scanner() {
             return result;
         }
         std::string read_error;
-        result.nova = identify(reading.h, read_error);
-        if (!result.nova)
+        if (identify(reading.h, read_error)) {
+            result.nova = true;
+            return result;
+        }
+        // Windows SCSI pass-through often requires both READ and WRITE
+        // access flags on the handle, even for a data-IN CDB.
+        Handle pass_through;
+        pass_through.h = CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                    nullptr, OPEN_EXISTING, 0, nullptr);
+        if (pass_through.h == INVALID_HANDLE_VALUE) {
             result.error = "MagicScan detected at " + path +
-                           ", but SCSI failed: zero-access [" + no_access_error +
-                           "]; read-access [" + read_error + "]";
+                           "; pass-through handle (GENERIC_READ|GENERIC_WRITE) open failed (" +
+                           win_error(GetLastError()) + "). Zero-access SCSI [" +
+                           no_access_error + "]; read-only SCSI [" + read_error + "]";
+            return result;
+        }
+        result.nova = identify(pass_through.h, result.error);
+        if (!result.nova) {
+            result.error = "Read/write access granted, but read-only NOVA SCSI failed: " + result.error;
+        }
         return result;
     }
     result.error = "No USB PhysicalDrive with MagicScan product ID found via zero-access metadata query.";

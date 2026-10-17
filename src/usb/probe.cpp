@@ -105,14 +105,10 @@ ProbeResult probe_scanner() {
         Handle reading;
         reading.h = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                                 nullptr, OPEN_EXISTING, 0, nullptr);
-        if (reading.h == INVALID_HANDLE_VALUE) {
-            result.error = "MagicScan detected at " + path +
-                           ", but SCSI on zero-access handle failed (" + no_access_error +
-                           ") and GENERIC_READ open failed (" + win_error(GetLastError()) + ")";
-            return result;
-        }
         std::string read_error;
-        if (identify(reading.h, read_error)) {
+        if (reading.h == INVALID_HANDLE_VALUE) {
+            read_error = "GENERIC_READ open " + win_error(GetLastError());
+        } else if (identify(reading.h, read_error)) {
             result.nova = true;
             return result;
         }

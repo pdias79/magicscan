@@ -16,7 +16,7 @@ Install Git, VS Code, and Visual Studio 2022 Build Tools with the **Desktop deve
 ```powershell
 git clone https://github.com/pdias79/magicscan.git
 cd magicscan
-git switch feature/bootstrap-cpp
+git switch feature/usb-capture
 code .
 ```
 
@@ -37,7 +37,7 @@ cmake --build build --config Release
 
 - Left mouse drag: draw a rectangular selection.
 - Right mouse drag: pan image.
-- Mouse wheel: zoom around cursor.
+- Mouse wheel: zoom around cursor; `+` / `-`: zoom around window center.
 - Ctrl+C: copy selected image, or whole image if selection is cleared, to Windows clipboard.
 - Ctrl+S: save selection/whole image as PNG.
 - Ctrl+A: clear selection (use the whole image).

@@ -10,6 +10,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>

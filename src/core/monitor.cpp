@@ -36,7 +36,8 @@ std::wstring unique_filename(const fs::path& directory) {
 
 } // namespace
 
-int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_bool* stop) {
+int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_bool* stop,
+                  const ScanEvents* events) {
     if (directory.empty()) {
         std::cerr << "Output directory must not be empty.\n";
         return 2;
@@ -61,7 +62,7 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
         std::string error;
         // Wait indefinitely for the next first SCAN press; a started scan still has
         // a finite safety deadline in capture_page.
-        if (!capture_page(output, error, true, stop)) {
+        if (!capture_page(output, error, true, stop, events)) {
             if (stop && stop->load()) return 0;
             std::cerr << "Monitoring interrupted: " << error << "\n";
             return 1;

@@ -44,6 +44,13 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         SendMessageW(field(hwnd,kClipboard),BM_SETCHECK,initial.auto_clipboard?BST_CHECKED:BST_UNCHECKED,0);
         return 0;
     }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN: {
+        HDC dc=reinterpret_cast<HDC>(wp);
+        SetBkMode(dc,TRANSPARENT);
+        SetTextColor(dc,RGB(25,25,25));
+        return reinterpret_cast<LRESULT>(GetStockObject(WHITE_BRUSH));
+    }
     case WM_COMMAND:
         switch(LOWORD(wp)) {
         case kBrowse: {

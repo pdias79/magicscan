@@ -31,7 +31,7 @@ add_executable(magicscan-tray WIN32
 )
 target_include_directories(magicscan-tray PRIVATE src)
 target_compile_definitions(magicscan-tray PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-target_link_libraries(magicscan-tray PRIVATE gdiplus gdi32 user32 shell32)
+target_link_libraries(magicscan-tray PRIVATE gdiplus gdi32 user32 shell32 comdlg32)
 if(MSVC)
     target_compile_options(magicscan-tray PRIVATE /W4 /permissive-)
 else()

@@ -191,3 +191,50 @@ Check these cases:
 3. Unplug mid-scan; unfinished capture should not produce a complete PNG. Replug and start a **new** scan; live preview, PNG and clipboard should work.
 4. Repeat disconnect/reconnect more than once, possibly with a different physical drive number.
 5. Pause and Quit while disconnected: MagicScan should stop in a bounded interval, without a modal error dialog.
+
+## PR #11 — Paramètres persistants et traitement d’image (anciennes PR #11 + #12)
+
+L’historique des scans n’est pas prévu.
+
+Le menu de notification **Paramètres...** permet de modifier les options conservées dans
+`%APPDATA%\\MagicScan\\settings.ini` : dossier de destination, sauvegarde automatique
+de chaque scan, copie automatique vers le presse-papiers et gamma par défaut.
+
+**Enregistrement automatique désactivé :** le scanner est lu intégralement en mémoire,
+la fenêtre reçoit les bandes progressivement et conserve la page après acquisition.
+Aucun PNG, y compris temporaire, n’est créé automatiquement ; les actions **Copier**
+et **Enregistrer** restent accessibles. Le mode n’empêche pas de sauvegarder
+manuellement une sélection ou la page complète.
+
+L’éditeur propose également **Tourner** (rotation de 90° après un scan terminé),
+les réglages en direct de luminosité et de contraste en plus du gamma, tout en
+préservant les données brutes de l’acquisition et la sélection à l’écran.
+L’export PNG manuel et la copie prennent en compte les corrections visibles.
+Les originaux enregistrés automatiquement restent sans retouche.
+
+**Remarque :** cette PR se concentre sur les retouches de base et l’export PNG
+déjà pris en charge ; les exports JPEG/PDF pourront faire l’objet d’une évolution
+distincte si demandés.
+
+### Test matériel — PowerShell administrateur
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/preferences-image-tools
+git pull origin feature/preferences-image-tools
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Vérifier : **Paramètres...** dans le systray, changement du dossier, bascule de la
+sauvegarde automatique et du presse-papiers, gamma initial réappliqué à chaque
+scan et options persistantes après redémarrage.
+
+Pour le mode sans fichier : désactiver **Enregistrer automatiquement les scans
+sur le disque**, effectuer un scan, constater qu’aucun nouveau fichier n’est créé,
+puis utiliser **Copier** et **Enregistrer** manuellement depuis la prévisualisation.
+Tester luminosité/contraste et rotation 90°, suivi d’un nouveau scan et d’une
+déconnexion/reconnexion du scanner. Réactiver la sauvegarde et vérifier qu’un
+PNG original est à nouveau créé.

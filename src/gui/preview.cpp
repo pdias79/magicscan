@@ -72,7 +72,7 @@ void save_selection(HWND hwnd, Viewer& v) {
     wchar_t path[MAX_PATH] = L"scan.png";
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd;
-    dialog.lpstrFilter = L"PNG images (*.png)\0*.png\0All files (*.*)\0*.*\0";
+    dialog.lpstrFilter = L"Images PNG (*.png)\0*.png\0Tous les fichiers (*.*)\0*.*\0";
     dialog.lpstrFile = path; dialog.nMaxFile = MAX_PATH;
     dialog.lpstrDefExt = L"png";
     dialog.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;

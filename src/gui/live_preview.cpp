@@ -585,7 +585,8 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 void ensure_window() {
     if (preview) {
-        ShowWindow(preview, SW_SHOW);
+        ShowWindow(preview, IsIconic(preview) ? SW_RESTORE : SW_SHOW);
+        BringWindowToTop(preview);
         SetForegroundWindow(preview);
         return;
     }
@@ -710,7 +711,12 @@ void live_preview_dispatch(UINT message) {
             hovered_tool=-1;
             pressed_tool=-1;
             ensure_window();
-            if (preview) SetWindowTextW(preview,L"MagicScan - numérisation en cours...");
+            if (preview) {
+                ShowWindow(preview, IsIconic(preview) ? SW_RESTORE : SW_SHOW);
+                BringWindowToTop(preview);
+                SetForegroundWindow(preview);
+                SetWindowTextW(preview,L"MagicScan - numérisation en cours...");
+            }
             break;
         case Event::Type::Band:
             // 24-bit BGR rows are DWORD-aligned for 2592-pixel scanner strips.

@@ -300,8 +300,10 @@ le dépôt de l'artefact CI. L'archive portable ne nécessite pas d'installation
 cmake -S . -B build -A x64
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
-.\scripts\package-windows.ps1 -BuildDir build -OutputDir dist
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 -BuildDir build -OutputDir dist
 ```
+
+La commande démarre une nouvelle session PowerShell avec une dérogation temporaire de politique d'exécution pour le seul processus de packaging. Elle ne modifie pas durablement les paramètres de sécurité PowerShell. Si une politique d'entreprise impose des restrictions supplémentaires, contacter l'administrateur plutôt que modifier la stratégie système.
 
 L'archive générée se trouve sous `dist/MagicScan-0.4.0-win64.zip`.
 Extrayez-la entièrement avant de lancer `magicscan-tray.exe`. Les droits

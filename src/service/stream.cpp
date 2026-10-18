@@ -57,7 +57,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
         Header head{};
         if (!read_exact(pipe, &head, sizeof(head), stop)) { break; }
         if ((head.kind == kStart || head.kind == kFinish || head.kind == kConnected ||
-             head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { success = false; break; }
+             head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { break; }
         if (head.kind == kStart) {
             page.clear();
             if (events && events->on_start) events->on_start();
@@ -65,7 +65,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
                    page.size() <= kMaxPageBytes - kBytes) {
             const size_t offset = page.size();
             page.resize(offset + kBytes);
-            if (!read_exact(pipe, page.data() + offset, kBytes, stop)) { success = false; break; }
+            if (!read_exact(pipe, page.data() + offset, kBytes, stop)) { break; }
             if (events && events->on_band) {
                 std::vector<uint8_t> band(page.begin() + static_cast<ptrdiff_t>(offset), page.end());
                 events->on_band(band, kWidth, kRows);

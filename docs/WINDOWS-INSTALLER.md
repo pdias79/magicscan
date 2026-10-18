@@ -1,4 +1,4 @@
-# PR17 — Installateur Windows MagicScan (brouillon)
+# Installateur Windows MagicScan
 
 ## Objectif
 Un installateur Inno Setup 6 x64 installe l'application dans Program Files,
@@ -13,17 +13,16 @@ Préinstaller **Inno Setup 6** depuis son site officiel. Dans PowerShell :
 ```powershell
 cd "C:\Users\Philou\Documents\repos\magicscan"
 git fetch origin
-git switch feature/windows-installer
-git pull --ff-only origin feature/windows-installer
+git switch release/0.5.0-stabilization
+git pull --ff-only origin release/0.5.0-stabilization
 cmake -S . -B build -A x64
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" ".\installer\MagicScan.iss"
+& "C:\Users\Philou\AppData\Local\Programs\Inno Setup 6\ISCC.exe" ".\installer\MagicScan.iss"
 ```
 
-L'installateur est généré sous `dist/MagicScan-0.4.0-setup-win64.exe`.
-Son numéro suit provisoirement le CMake `0.4.0`; le bump de version
-sera traité avec la publication.
+L'installateur est généré sous `dist/MagicScan-0.5.0-setup-win64.exe`.
+Son numéro correspond à la version CMake `0.5.0`.
 
 ## Installation expérimentale
 1. Fermer MagicScan sur toutes les sessions et arrêter le service existant
@@ -52,5 +51,4 @@ utilisateur et ses scans ne sont pas effacés.
   depuis une session standard avec UAC.
 - En cas d'échec du service, relever la sortie via une exécution PowerShell
   manuelle de `installer/manage-service.ps1` en tant qu'administrateur.
-- Ne pas fusionner avant build, installation, usage standard et désinstallation
-  sur Windows réel.
+- Vérifier la désinstallation sur Windows réel avant de publier la release 0.5.0.

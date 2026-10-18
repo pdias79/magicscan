@@ -40,10 +40,28 @@ jobs:
           foreach ($item in @("magicscan-tray.exe", "magicscan.exe", "LISEZ-MOI.md")) {
             if (-not (Test-Path "verify/MagicScan-$version-win64/$item")) { throw "Fichier manquant : $item" }
           }
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = @(
+            "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe",
+            "${env:ProgramFiles}\\Inno Setup 6\\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $compiler) { throw "Inno Setup compiler not found" }
+          & $compiler ".\\installer\\MagicScan.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup build failed" }
+          $version = "${{ github.ref_name }}".Substring(1)
+          if (-not (Test-Path "dist/MagicScan-$version-setup-win64.exe")) {
+            throw "Installer not generated"
+          }
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = "${{ github.ref_name }}".Substring(1)
-          gh release create "${{ github.ref_name }}" "dist/MagicScan-$version-win64.zip" --verify-tag --title "MagicScan ${{ github.ref_name }}" --generate-notes
+          gh release create "${{ github.ref_name }}" "dist/MagicScan-$version-win64.zip" "dist/MagicScan-$version-setup-win64.exe" --verify-tag --title "MagicScan ${{ github.ref_name }}" --generate-notes

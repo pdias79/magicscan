@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(magicscan VERSION 0.5.0 LANGUAGES CXX RC)
+project(magicscan VERSION 0.6.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "MagicScan now targets Windows only (C++17 + Win32).")

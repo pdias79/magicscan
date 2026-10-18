@@ -361,7 +361,6 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             InvalidateRect(hwnd,nullptr,FALSE);
         }
         if (editor.panning) {
-            POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
             editor.ox+=p.x-editor.last.x; editor.oy+=p.y-editor.last.y;
             editor.last=p; editor.auto_fit=false;
             InvalidateRect(hwnd,nullptr,FALSE);

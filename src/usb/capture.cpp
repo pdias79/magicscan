@@ -205,7 +205,8 @@ bool capture_first_band(const std::wstring& output_png, std::string& error) {
 }
 
 bool capture_page(const std::wstring& output_png, std::string& error,
-                  bool wait_for_start_forever, const std::atomic_bool* stop) {
+                  bool wait_for_start_forever, const std::atomic_bool* stop,
+                  const ScanEvents* events) {
     const auto scanner = probe_scanner();
     if (!scanner.found || !scanner.nova) {
         error = "Scanner identification failed: " + scanner.error;
@@ -245,6 +246,7 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             deadline = Clock::now() + std::chrono::minutes(5);
             stop_seen = false;
             std::cout << "Scan started\n" << std::flush;
+            if (events && events->on_start) events->on_start();
         }
         if (!scanning && active && session_started) {
             stop_seen = true;
@@ -266,7 +268,12 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             if (pixels.size()+kBandSize>kMaxPageBytes) {
                 error="Page exceeds 256 MiB safety memory budget"; return false;
             }
+            const size_t offset_before = pixels.size();
             if (!read_band(device.value,address,pixels,error)) return false;
+            if (events && events->on_band) {
+                std::vector<uint8_t> band(pixels.begin() + static_cast<ptrdiff_t>(offset_before), pixels.end());
+                events->on_band(band, kWidth, kLines);
+            }
             last_band=Clock::now();
             last_address=address;
             band_was_ready=true;
@@ -290,6 +297,7 @@ bool capture_page(const std::wstring& output_png, std::string& error,
     }
     const size_t bands=pixels.size()/kBandSize;
     if (!write_page_png(output_png,pixels,bands,error)) return false;
+    if (events && events->on_complete) events->on_complete(output_png);
     std::cout << "Saved " << bands << " bands (" << kWidth << "x" << bands*kLines
               << ") to PNG\n";
     return true;

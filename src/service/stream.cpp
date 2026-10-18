@@ -15,7 +15,7 @@ constexpr uint32_t kWidth = 2592, kRows = 192;
 constexpr uint32_t kBytes = kWidth * kRows * 3;
 constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
 struct Header { uint32_t kind; uint32_t size; };
-enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5 };
+enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6 };
 bool read_exact(HANDLE pipe, void* data, DWORD length, const std::atomic_bool* stop) {
     auto* out = static_cast<unsigned char*>(data);
     DWORD done = 0;
@@ -83,6 +83,8 @@ bool monitor_remote(const std::wstring& directory, bool auto_save,
             }
             if (events && events->on_complete) events->on_complete(filename);
             page.clear();
+        } else if (head.kind == kHeartbeat) {
+            continue;
         } else if (head.kind == kConnected) {
             if (events && events->on_connected) events->on_connected();
         } else if (head.kind == kFailure) {

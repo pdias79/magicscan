@@ -44,6 +44,7 @@ add_executable(magicscan
 # scanner diagnostics and capture tests without a graphical shell.
 add_executable(magicscan-tray WIN32
     src/gui/tray.cpp
+    src/usb/access_diagnostics.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/gui/about.cpp
     src/gui/preferences.cpp

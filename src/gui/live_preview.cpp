@@ -464,10 +464,10 @@ void ensure_window() {
         HINSTANCE instance = GetModuleHandleW(nullptr);
         HICON large = static_cast<HICON>(LoadImageW(instance,
             MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 32, 32, LR_SHARED));
-        HICON small = static_cast<HICON>(LoadImageW(instance,
+        HICON small_icon = static_cast<HICON>(LoadImageW(instance,
             MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 16, 16, LR_SHARED));
         SendMessageW(preview, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large));
-        SendMessageW(preview, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small));
+        SendMessageW(preview, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
         HMENU system_menu = GetSystemMenu(preview, FALSE);
         if (system_menu) {
             AppendMenuW(system_menu, MF_SEPARATOR, 0, nullptr);

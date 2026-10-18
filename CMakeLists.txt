@@ -11,6 +11,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(magicscan
     src/main.cpp
     src/usb/probe.cpp
+    src/usb/diagnostics.cpp
+    src/usb/capture.cpp
     src/gui/preview.cpp
 )
 target_include_directories(magicscan PRIVATE src)

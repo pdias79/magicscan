@@ -238,3 +238,12 @@ puis utiliser **Copier** et **Enregistrer** manuellement depuis la prévisualisa
 Tester luminosité/contraste et rotation 90°, suivi d’un nouveau scan et d’une
 déconnexion/reconnexion du scanner. Réactiver la sauvegarde et vérifier qu’un
 PNG original est à nouveau créé.
+
+### PR #11 — Ergonomie et redimensionnement de la prévisualisation
+
+- Les contrôles texte et cases à cocher de **Paramètres** utilisent le même fond blanc que la fenêtre (messages `WM_CTLCOLORSTATIC` et `WM_CTLCOLORBTN`).
+- L'éditeur actualise le dessin sur `WM_SIZE` et `WM_SIZING` pendant le redimensionnement interactif, afin de ne plus afficher une zone vide ou des artefacts avant le relâchement de la souris.
+- Un bouton **Réglages** dans la barre supérieure affiche ou masque les trois curseurs. Le panneau est masqué au démarrage ; second clic pour le refermer. Gamma, luminosité et contraste sont trois curseurs de même largeur, alignés verticalement. Ils suivent la largeur de la fenêtre. Les valeurs sont conservées lorsque le panneau est fermé.
+- Le panneau replié rend davantage d'espace à la prévisualisation et **Ajuster** tient compte de sa hauteur.
+
+Tests : déplacer lentement puis rapidement les bordures avec une image affichée, ouvrir/fermer Réglages, vérifier l'alignement des trois curseurs et le recadrage/zoom, et vérifier les fonds des champs et cases à cocher dans Paramètres.

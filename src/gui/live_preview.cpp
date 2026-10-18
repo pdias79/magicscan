@@ -1,6 +1,7 @@
 #include "live_preview.hpp"
 #include "resource.hpp"
 #include "about.hpp"
+#include "export_formats.hpp"
 #include <objidl.h>
 #include <gdiplus.h>
 #include <windowsx.h>
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -310,12 +312,23 @@ void save_selected(HWND hwnd) {
     wchar_t file[MAX_PATH]=L"selection.png";
     OPENFILENAMEW dialog{};
     dialog.lStructSize=sizeof(dialog); dialog.hwndOwner=hwnd;
-    dialog.lpstrFilter=L"Images PNG (*.png)\0*.png\0Tous les fichiers (*.*)\0*.*\0";
+    dialog.lpstrFilter=L"Image PNG (*.png)\0*.png\0Image JPEG (*.jpg)\0*.jpg;*.jpeg\0Document PDF (*.pdf)\0*.pdf\0";
     dialog.lpstrFile=file; dialog.nMaxFile=MAX_PATH;
-    dialog.lpstrDefExt=L"png";
+    dialog.nFilterIndex=1;
     dialog.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
-    if (GetSaveFileNameW(&dialog) && !encode_png(file,pixels,w,h))
-        MessageBoxW(hwnd,L"Impossible d’enregistrer l’image PNG sélectionnée.",L"MagicScan",MB_ICONERROR);
+    if (!GetSaveFileNameW(&dialog)) return;
+    std::filesystem::path path(file);
+    const wchar_t* ext = dialog.nFilterIndex==2 ? L".jpg" :
+                         dialog.nFilterIndex==3 ? L".pdf" : L".png";
+    // Always make file format match the filter chosen in the dialog.
+    path.replace_extension(ext);
+    bool ok=false;
+    if (dialog.nFilterIndex==2) ok=export_jpeg(path.wstring(),pixels,w,h);
+    else if (dialog.nFilterIndex==3) ok=export_pdf(path.wstring(),pixels,w,h);
+    else ok=encode_png(path.wstring(),pixels,w,h);
+    if (!ok)
+        MessageBoxW(hwnd,L"Impossible d'enregistrer le fichier sélectionné.",
+                    L"MagicScan",MB_ICONERROR);
 }
 
 void run_tool(HWND hwnd, Command command) {

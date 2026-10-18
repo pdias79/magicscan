@@ -14,6 +14,7 @@ add_executable(magicscan
     src/usb/diagnostics.cpp
     src/usb/capture.cpp
     src/core/monitor.cpp
+    src/core/image_writer.cpp
     src/gui/clipboard.cpp
     src/gui/preview.cpp
 )
@@ -23,6 +24,7 @@ add_executable(magicscan-tray WIN32
     src/gui/tray.cpp
     src/gui/clipboard.cpp
     src/core/monitor.cpp
+    src/core/image_writer.cpp
     src/usb/probe.cpp
     src/usb/capture.cpp
 )

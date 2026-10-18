@@ -81,8 +81,8 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
-        if (auto_save) std::wcout << L"Saved: " << output << L"\n" << std::flush;
-        if (clipboard && auto_save) {
+        if (auto_save && fs::exists(output)) std::wcout << L"Saved: " << output << L"\n" << std::flush;
+        if (clipboard && auto_save && fs::exists(output)) {
             if (copy_png_to_clipboard(output, error))
                 std::cout << "CF_DIB image placed on Windows clipboard.\n" << std::flush;
             else

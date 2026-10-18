@@ -2,6 +2,8 @@
 #include "live_preview.hpp"
 #include "resource.hpp"
 #include "about.hpp"
+#include "preferences.hpp"
+#include "../core/settings.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <atomic>
@@ -17,6 +19,7 @@ constexpr UINT kCommandToggle = 1001;
 constexpr UINT kCommandOpen = 1002;
 constexpr UINT kCommandQuit = 1003;
 constexpr UINT kCommandAbout = 1004;
+constexpr UINT kCommandPreferences = 1005;
 constexpr UINT kTrayId = 1;
 struct App {
     HWND window = nullptr;
@@ -26,6 +29,7 @@ struct App {
     std::atomic_bool connected{false};
     std::thread worker;
     std::wstring scans;
+    magicscan::UserSettings settings;
 };
 App app;
 
@@ -50,6 +54,7 @@ void start_worker() {
     app.stop = false;
     app.running = true;
     app.connected = false;
+    magicscan::live_preview_set_options(app.settings.auto_clipboard,app.settings.default_gamma);
     update_tip();
     app.worker = std::thread([] {
         magicscan::ScanEvents events{};
@@ -66,7 +71,8 @@ void start_worker() {
         events.on_complete = [](const std::wstring& file) {
             magicscan::live_preview_complete(file);
         };
-        const int code = magicscan::monitor_scans(app.scans, true, &app.stop, &events);
+        const int code = magicscan::monitor_scans(app.scans, false, &app.stop, &events,
+                                                  app.settings.auto_save);
         if (!app.stop && code != 0)
             PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
     });
@@ -77,6 +83,7 @@ void menu(HWND hwnd) {
     AppendMenuW(m, MF_STRING, kCommandToggle,
                 app.running ? L"Mettre en pause" : L"Reprendre la surveillance");
     AppendMenuW(m, MF_STRING, kCommandOpen, L"Ouvrir le dossier des scans");
+    AppendMenuW(m, MF_STRING, kCommandPreferences, L"Paramètres...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, kCommandAbout, L"À propos...");
     AppendMenuW(m, MF_STRING, kCommandQuit, L"Quitter");
@@ -112,6 +119,12 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(app.tray.hIcon));
         start_worker();
         return 0;
+    case magicscan::kPreferencesChanged:
+        stop_worker();
+        app.settings=magicscan::load_settings();
+        app.scans=app.settings.scan_folder;
+        start_worker();
+        return 0;
     case kScannerConnectionChanged:
         if (app.running) {
             app.connected = (wp != 0);
@@ -134,6 +147,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         case kCommandOpen:
             ShellExecuteW(hwnd, L"open", app.scans.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            return 0;
+        case kCommandPreferences:
+            magicscan::show_preferences(hwnd,app.settings);
             return 0;
         case kCommandAbout:
             magicscan::show_about(hwnd);
@@ -173,9 +189,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
         else
             app.scans = L"C:\\Scans";
     }
+    app.settings=magicscan::load_settings();
+    if (!app.settings.scan_folder.empty()) app.scans=app.settings.scan_folder;
+    else {
+        app.settings.scan_folder=app.scans;
+        magicscan::save_settings(app.settings);
+    }
     std::error_code ec;
-    std::filesystem::create_directories(app.scans, ec);
-    if (ec) {
+    if (app.settings.auto_save) std::filesystem::create_directories(app.scans, ec);
+    if (app.settings.auto_save && ec) {
         MessageBoxW(nullptr, L"Impossible de créer le dossier de destination des scans.", L"MagicScan",
                     MB_OK | MB_ICONERROR);
         return 2;

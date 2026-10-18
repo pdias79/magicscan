@@ -57,3 +57,19 @@ GitHub Actions builds the Windows x64 executable and uploads it as a build artif
 ## Privacy
 
 Do not commit USB traces, captured scan images, or logs containing private data. The protocol specification is based on USB traffic reverse engineering only.
+
+## Windows tray prototype (PR #5)
+
+The Win32 notification-area prototype is built separately from the diagnostic CLI, with GUI code in `src/gui/`, acquisition in `src/usb/`, and scan orchestration in `src/core/`.
+
+From an elevated interactive Windows desktop session, run:
+
+```powershell
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+The tray icon starts continuous scan monitoring. Right-click for **Pause monitoring**, **Resume monitoring**, **Open scans folder** and **Quit**. Double-click the icon to open the scan folder. Both PNG save and CF_DIB clipboard export are enabled. Without an explicit folder argument the application uses `%USERPROFILE%\Pictures\MagicScan`.
+
+This first tray implementation still needs Windows hardware validation, elevated permissions, and UI tests. **PR #6 will add a live, band-by-band scan preview**: the scanner acquisition backend will publish decoded strip events to a separate core/controller, and the GUI thread will render the accumulating image without blocking USB polling. No GUI code should be added to the USB transport module.

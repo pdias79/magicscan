@@ -3,6 +3,7 @@
 #include "../core/image_writer.hpp"
 #include <windows.h>
 #include <chrono>
+#include <algorithm>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -17,12 +18,28 @@ constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
 struct Header { uint32_t kind; uint32_t size; };
 enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6 };
 bool read_exact(HANDLE pipe, void* data, DWORD length, const std::atomic_bool* stop) {
+    // A synchronous pipe read can stay blocked after the service is stopped.
+    // Poll availability so stop/restart is detected without restarting the GUI.
     auto* out = static_cast<unsigned char*>(data);
     DWORD done = 0;
+    auto last_progress = std::chrono::steady_clock::now();
     while (done < length && (!stop || !stop->load())) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr))
+            return false; // Broken pipe / service stopped.
+        if (available == 0) {
+            if (std::chrono::steady_clock::now() - last_progress >
+                std::chrono::seconds(10))
+                return false; // Missing heartbeat, stalled service.
+            Sleep(50);
+            continue;
+        }
         DWORD received = 0;
-        if (!ReadFile(pipe, out + done, length - done, &received, nullptr) || !received) return false;
+        const DWORD amount = std::min<DWORD>(length - done, available);
+        if (!ReadFile(pipe, out + done, amount, &received, nullptr) || !received)
+            return false;
         done += received;
+        last_progress = std::chrono::steady_clock::now();
     }
     return done == length;
 }

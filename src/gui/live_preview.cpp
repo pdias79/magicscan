@@ -30,6 +30,7 @@ std::vector<uint8_t> accumulated;
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
+constexpr int kToolbarHeight = 90;
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -67,7 +68,6 @@ void zoom_at(POINT p,double factor) {
 
 std::wstring saved_path;
 
-constexpr int kToolbarHeight = 90;
 constexpr int kButtonWidth = 92;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;

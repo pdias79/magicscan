@@ -39,10 +39,11 @@ Editor editor;
 int image_x(int x) { return static_cast<int>(std::floor((x-editor.ox)/editor.zoom)); }
 int image_y(int y) { return static_cast<int>(std::floor((y-editor.oy)/editor.zoom)); }
 RECT selected_rect() {
-    int x1=std::clamp(image_x(editor.begin.x),0,static_cast<int>(image_width));
-    int x2=std::clamp(image_x(editor.end.x),0,static_cast<int>(image_width));
-    int y1=std::clamp(image_y(editor.begin.y),0,static_cast<int>(image_height));
-    int y2=std::clamp(image_y(editor.end.y),0,static_cast<int>(image_height));
+    // Selection endpoints are stored in image pixel coordinates, not screen space.
+    int x1=std::clamp(editor.begin.x,0,static_cast<int>(image_width));
+    int x2=std::clamp(editor.end.x,0,static_cast<int>(image_width));
+    int y1=std::clamp(editor.begin.y,0,static_cast<int>(image_height));
+    int y2=std::clamp(editor.end.y,0,static_cast<int>(image_height));
     return {std::min(x1,x2),std::min(y1,y2),std::max(x1,x2),std::max(y1,y2)};
 }
 void fit_view(HWND hwnd) {
@@ -164,9 +165,17 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: {
         PAINTSTRUCT ps{};
-        HDC dc = BeginPaint(hwnd, &ps);
+        HDC screen_dc = BeginPaint(hwnd, &ps);
         RECT client{};
         GetClientRect(hwnd, &client);
+        const int paint_width=client.right-client.left;
+        const int paint_height=client.bottom-client.top;
+        HDC buffer_dc = paint_width>0 && paint_height>0
+            ? CreateCompatibleDC(screen_dc) : nullptr;
+        HBITMAP backing_bitmap = buffer_dc
+            ? CreateCompatibleBitmap(screen_dc,paint_width,paint_height) : nullptr;
+        HGDIOBJ old_bitmap = backing_bitmap ? SelectObject(buffer_dc,backing_bitmap) : nullptr;
+        HDC dc = old_bitmap ? buffer_dc : screen_dc;
         FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
         if (image_width && image_height && !accumulated.empty()) {
             if (editor.auto_fit) fit_view(hwnd);
@@ -202,13 +211,19 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DrawTextW(dc, L"Waiting for scan bands...", -1, &client,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
+        if (old_bitmap) {
+            BitBlt(screen_dc,0,0,paint_width,paint_height,buffer_dc,0,0,SRCCOPY);
+            SelectObject(buffer_dc,old_bitmap);
+        }
+        if (backing_bitmap) DeleteObject(backing_bitmap);
+        if (buffer_dc) DeleteDC(buffer_dc);
         EndPaint(hwnd, &ps);
         return 0;
     }
     case WM_ERASEBKGND: return 1;
     case WM_LBUTTONDOWN:
         SetFocus(hwnd);
-        editor.begin=editor.end={GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+        editor.begin=editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
         editor.selecting=true; editor.selected=false;
         SetCapture(hwnd);
         return 0;
@@ -220,7 +235,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_MOUSEMOVE:
         if (editor.selecting) {
-            editor.end={GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+            editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
             InvalidateRect(hwnd,nullptr,FALSE);
         }
         if (editor.panning) {
@@ -232,7 +247,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_LBUTTONUP:
         if (editor.selecting) {
-            editor.end={GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+            editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
             editor.selecting=false; editor.selected=true;
             ReleaseCapture(); InvalidateRect(hwnd,nullptr,FALSE);
         }
@@ -248,6 +263,13 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_KEYDOWN: {
+        if (wp==VK_ESCAPE) {
+            editor.selected=false;
+            editor.selecting=false;
+            if (!editor.panning && GetCapture()==hwnd) ReleaseCapture();
+            InvalidateRect(hwnd,nullptr,FALSE);
+            return 0;
+        }
         const bool ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0;
         if (ctrl) {
             if (wp=='C' && !copy_selected(hwnd))

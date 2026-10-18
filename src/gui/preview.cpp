@@ -1,4 +1,5 @@
 #include "preview.hpp"
+#include "resource.hpp"
 #include <windows.h>
 #include <objidl.h>
 #include <windowsx.h>
@@ -78,7 +79,7 @@ void save_selection(HWND hwnd, Viewer& v) {
     if (!GetSaveFileNameW(&dialog)) return;
     CLSID clsid{};
     if (!png_encoder(clsid) || bitmap->Save(path, &clsid) != Ok)
-        MessageBoxW(hwnd, L"Cannot save PNG.", L"MagicScan", MB_ICONERROR);
+        MessageBoxW(hwnd, L"Impossible d’enregistrer le fichier PNG.", L"MagicScan", MB_ICONERROR);
 }
 LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     Viewer* v = viewer(hwnd);
@@ -210,12 +211,16 @@ int show_preview(const std::wstring& file_path) {
     wc.hInstance = instance; wc.lpfnWndProc = window_proc;
     wc.lpszClassName = L"MagicScanNativePreview";
     wc.hCursor = LoadCursor(nullptr, IDC_CROSS);
+    wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(IDI_MAGICSCAN));
     RegisterClassW(&wc);
     HWND hwnd = CreateWindowExW(0,wc.lpszClassName,
-        L"MagicScan - Drag: select  |  Right drag: pan  |  Wheel/+/-: zoom  |  Ctrl+C: copy  |  Ctrl+S: save",
+        L"MagicScan - Sélection : clic gauche | Déplacement : clic droit | Zoom : molette | Ctrl+C : copier | Ctrl+S : enregistrer",
         WS_OVERLAPPEDWINDOW|WS_VISIBLE,CW_USEDEFAULT,CW_USEDEFAULT,1100,820,
         nullptr,nullptr,instance,&state);
     if (!hwnd) { GdiplusShutdown(token); return 1; }
+    SendMessageW(hwnd, WM_SETICON, ICON_SMALL,
+        reinterpret_cast<LPARAM>(LoadImageW(instance,MAKEINTRESOURCEW(IDI_MAGICSCAN),
+            IMAGE_ICON,16,16,LR_SHARED)));
     MSG message{};
     while (GetMessageW(&message,nullptr,0,0)>0) {
         TranslateMessage(&message); DispatchMessageW(&message);

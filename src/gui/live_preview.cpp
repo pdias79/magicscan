@@ -194,12 +194,12 @@ void draw_toolbar(HDC dc, int width) {
         }
         if (label_font) {
             HGDIOBJ old_font=SelectObject(dc,label_font);
-            RECT label{x+4,50,x+kButtonWidth-4,7+kButtonHeight-3};
+            RECT label{x+4,48,x+kButtonWidth-4,7+kButtonHeight-5};
             SetTextColor(dc,RGB(31,43,56));
             const wchar_t* caption = kTools[i].command == Command::CopyClose
                 ? L"Copier et\nfermer" : kTools[i].label;
             // Keep two short lines for the longest caption, including DPI scaling.
-            DrawTextW(dc,caption,-1,&label,DT_CENTER|DT_VCENTER|DT_WORDBREAK|DT_NOPREFIX);
+            DrawTextW(dc,caption,-1,&label,DT_CENTER|DT_TOP|DT_WORDBREAK|DT_NOPREFIX);
             SelectObject(dc,old_font);
         }
     }
@@ -472,7 +472,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 DeleteObject(pen);
             }
         } else {
-            DrawTextW(dc, L"En attente des bandes du scanner...", -1, &client,
+            DrawTextW(dc, L"Glisser le scanner vers le bas", -1, &client,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
         RestoreDC(dc,saved_clip);

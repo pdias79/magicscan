@@ -118,3 +118,21 @@ Scan a page; confirm the display grows during the scan. Draw a rectangle over th
 - The live window draws each frame to an off-screen GDI bitmap and blits once to suppress selection/pan flicker.
 
 Test with a scan: select a distinctive small area, zoom several times, pan, then copy it to Paint; copied pixels and PNG dimensions must remain unchanged. Press Escape and copy again; the full page should be used.
+
+## Large-icon live preview toolbar (next PR)
+
+The live preview has a native 90-pixel command strip with large glyph icons and readable labels for **Copy**, **Save**, **Clear**, **Fit**, **Zoom +** and **Zoom -**. Actions operate on the same selection and zoom state as the keyboard shortcuts, without changing the USB backend. The image is displayed below the toolbar. Selecting and panning remain flicker-free through double-buffered painting.
+
+Run on the usual elevated Windows desktop:
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/large-icon-toolbar
+git pull origin feature/large-icon-toolbar
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Scan a page; use the Copy and Save buttons with a selection, Clear to restore full-image operations, Fit to recenter, and Zoom +/- to preserve image-space selection. Confirm the toolbar remains visible during acquisition and the clipboard plus PNG exports are unaffected.

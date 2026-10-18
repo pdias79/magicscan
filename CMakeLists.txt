@@ -28,9 +28,9 @@ file(TO_CMAKE_PATH "${MAGICSCAN_ICON_OUTPUT}" MAGICSCAN_ICON_PATH)
 configure_file(cmake/magicscan.rc.in "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc.utf8" @ONLY)
 execute_process(
     COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
-        -Command "$text = [System.IO.File]::ReadAllText($args[0], [System.Text.Encoding]::UTF8); [System.IO.File]::WriteAllText($args[1], $text, [System.Text.Encoding]::Unicode)"
+        -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/write-unicode-rc.ps1" -Source
         "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc.utf8"
-        "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc"
+        -Destination "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc"
     RESULT_VARIABLE MAGICSCAN_RC_RESULT
 )
 if(NOT MAGICSCAN_RC_RESULT EQUAL 0)

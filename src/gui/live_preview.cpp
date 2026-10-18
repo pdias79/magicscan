@@ -105,7 +105,7 @@ void zoom_at(POINT p,double factor) {
 
 std::wstring saved_path;
 
-constexpr int kButtonWidth = 100;
+constexpr int kButtonWidth = 115;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;
 constexpr int kToolbarGap = 4;
@@ -655,7 +655,7 @@ void ensure_window() {
     if (!registered) return;
     preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Prévisualisation et édition",
                               WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 900, 700,
+                              CW_USEDEFAULT, CW_USEDEFAULT, 1100, 700,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (preview) {
         INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX),ICC_BAR_CLASSES};

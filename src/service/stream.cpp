@@ -89,7 +89,6 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
             if (events && events->on_disconnected) events->on_disconnected();
             page.clear();
         } else {
-            success = false;
             break;
         }
     }

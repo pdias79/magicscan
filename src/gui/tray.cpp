@@ -201,9 +201,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
     }
     const DWORD mutex_error = GetLastError();
     if (mutex_error == ERROR_ALREADY_EXISTS) {
+        // A running instance already owns the tray icon and scanner monitor.
+        // Do not display a notification or initialize another instance.
         CloseHandle(single_instance);
-        MessageBoxW(nullptr, L"MagicScan est déjà en cours d’exécution.",
-                    L"MagicScan", MB_OK | MB_ICONINFORMATION);
         return 0;
     }
     struct MutexGuard {

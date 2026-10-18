@@ -70,9 +70,9 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
                 std::vector<uint8_t> band(page.begin() + static_cast<ptrdiff_t>(offset), page.end());
                 events->on_band(band, kWidth, kRows);
             }
-        } else if (head.kind == kFinish && !page.empty() && page.size() % kBytes == 0) {
+        } else if (head.kind == kFinish && page.size() % kBytes == 0) {
             std::wstring filename;
-            if (auto_save) {
+            if (auto_save && !page.empty()) {
                 filename = unique_path(directory);
                 std::string error;
                 if (filename.empty() || !write_page_png(filename, page, page.size() / kBytes, error)) {

@@ -247,3 +247,29 @@ PNG original est à nouveau créé.
 - Le panneau replié rend davantage d'espace à la prévisualisation et **Ajuster** tient compte de sa hauteur.
 
 Tests : déplacer lentement puis rapidement les bordures avec une image affichée, ouvrir/fermer Réglages, vérifier l'alignement des trois curseurs et le recadrage/zoom, et vérifier les fonds des champs et cases à cocher dans Paramètres.
+
+## PR #12 — Diagnostics d'accès USB et permissions Windows
+
+Cette évolution améliore la compréhension des erreurs d'accès sans changer les droits Windows, les ACL, les pilotes, ni les commandes SCSI en lecture seule. Le systray distingue : scanner absent, accès refusé, périphérique occupé, scanner déconnecté et erreur générique. La surveillance continue ses nouvelles tentatives après chaque échec.
+
+La commande de diagnostic **en lecture seule** fournit le chemin PhysicalDrive détecté, le succès/échec de l'identification NOVA, le code d'erreur Windows et une action conseillée :
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/usb-permission-diagnostics
+git pull origin feature/usb-permission-diagnostics
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan.exe --diagnose-access
+```
+
+Lancer d'abord dans **PowerShell normal**, puis dans **PowerShell administrateur**. Comparer le résultat pour vérifier si l'élévation est réellement nécessaire sur ce PC. Une ouverture `PhysicalDrive` avec accès lecture/écriture peut être exigée par Windows pour `IOCTL_SCSI_PASS_THROUGH_DIRECT`, même lorsque toutes les commandes envoyées sont `DATA_IN`. Cette PR ne contourne aucune restriction du système.
+
+Tester ensuite l'application graphique dans PowerShell administrateur :
+
+```powershell
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Vérifier la disparition et le retour du scanner, l'infobulle correspondante et les scans complets après reconnexion. Simuler si possible un refus d'accès sans modifier les permissions système. La confirmation d'une utilisation sans élévation dépend des résultats matériels : ne pas promettre un fonctionnement non administrateur sans preuve.

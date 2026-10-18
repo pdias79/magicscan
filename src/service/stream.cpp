@@ -45,10 +45,10 @@ std::wstring unique_path(const std::filesystem::path& folder) {
 
 int monitor_remote(const std::wstring& directory, bool auto_save,
                     std::atomic_bool* stop, const ScanEvents* events) {
-    if (!WaitNamedPipeW(kStreamPipePath, 2000)) return false;
+    if (!WaitNamedPipeW(kStreamPipePath, 2000)) return -1;
     HANDLE pipe = CreateFileW(kStreamPipePath, GENERIC_READ, 0, nullptr,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (pipe == INVALID_HANDLE_VALUE) return false;
+    if (pipe == INVALID_HANDLE_VALUE) return -1;
     // Set bounded synchronous reads so Pause/Quit cannot hang indefinitely.
     // Cancellation from another thread uses CancelSynchronousIo on worker thread.
     std::vector<uint8_t> page;

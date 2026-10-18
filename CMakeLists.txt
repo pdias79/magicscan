@@ -31,6 +31,7 @@ add_executable(magicscan
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/main.cpp
     src/service/client.cpp
+    src/service/stream.cpp
     src/usb/probe.cpp
     src/usb/access_diagnostics.cpp
     src/usb/diagnostics.cpp
@@ -45,6 +46,7 @@ add_executable(magicscan
 # scanner diagnostics and capture tests without a graphical shell.
 add_executable(magicscan-tray WIN32
     src/gui/tray.cpp
+    src/service/stream.cpp
     src/usb/access_diagnostics.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/gui/about.cpp
@@ -61,10 +63,13 @@ add_executable(magicscan-tray WIN32
 # Only the status pipe exists in this foundation; acquisition stays in the tray.
 add_executable(magicscan-usb-service
     src/service/service.cpp
+    src/service/stream_server.cpp
+    src/usb/capture.cpp
+    src/core/image_writer.cpp
     src/usb/probe.cpp
 )
 target_compile_definitions(magicscan-usb-service PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-target_link_libraries(magicscan-usb-service PRIVATE advapi32)
+target_link_libraries(magicscan-usb-service PRIVATE advapi32 gdiplus gdi32 user32)
 if(MSVC)
     target_compile_options(magicscan-usb-service PRIVATE /W4 /permissive- /utf-8)
 else()

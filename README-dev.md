@@ -158,3 +158,11 @@ cmake --build build --config Release
 ```
 
 Verify Explorer shows the scanner icon on both executables, the notification icon matches it, and the live preview's titlebar/taskbar displays it. From the notification area open **À propos**: ensure version and GitHub address are shown and **Ouvrir GitHub** works. Start a scan to verify existing progressive rendering, French toolbar commands and PNG/clipboard output. Test the live preview's window system menu > **À propos de MagicScan**.
+
+### PR #9 refinements: About dialog background and gamma
+
+- The native About dialog uses a white background consistently for its static text and icon controls (transparent text backgrounds via `WM_CTLCOLORSTATIC`).
+- The live preview has a **Correction gamma** slider from 0.20 to 3.00 (default 1.00). A gamma lookup table updates the rendered pixels without modifying original USB capture data. Cropped clipboard and manual PNG exports use corrected pixels; the automatically saved full-page PNG remains the unmodified acquisition. The slider resets to 1.00 for each new scan.
+- This control is implemented solely in `src/gui/` using the Windows common-controls trackbar; `src/usb/` is unchanged.
+
+After launching, open **À propos** and verify the icon and text have backgrounds matching the white dialog. Then scan a colorful page, adjust gamma in the live window (including darkening and brightening), select a region and verify **Copier** and **Enregistrer** preserve the displayed correction. The automatic PNG in the scan folder must still be unchanged.

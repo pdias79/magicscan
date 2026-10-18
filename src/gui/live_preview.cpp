@@ -352,6 +352,10 @@ void dismiss_preview(HWND hwnd) {
     // return any completely free heap pages to Windows, without discarding the
     // independently owned clipboard image.
     _heapmin();
+    // Scan buffers are gone; release idle resident pages retained by the heap.
+    // This reduces working set, not the memory required by future scans.
+    SetProcessWorkingSetSize(GetCurrentProcess(),
+                             static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
 }
 void run_tool(HWND hwnd, Command command) {
     switch (command) {

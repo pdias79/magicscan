@@ -136,3 +136,25 @@ cmake --build build --config Release
 ```
 
 Scan a page; use the Copy and Save buttons with a selection, Clear to restore full-image operations, Fit to recenter, and Zoom +/- to preserve image-space selection. Confirm the toolbar remains visible during acquisition and the clipboard plus PNG exports are unaffected.
+
+## French Windows interface, application icon and About dialog (PR #9)
+
+The approved handheld-scanner artwork is stored as a small text-encoded PNG asset under `assets/` and converted at CMake configure time into a multi-resolution Windows `.ico` file (16, 24, 32, 48, 64, 128 and 256 pixels). The generated resource is embedded in both Windows executables, used as the live preview/window icon, and loaded for the notification area. Icon generation uses built-in Windows PowerShell and System.Drawing, without a third-party icon package.
+
+All user-facing **Windows GUI** labels, menus, titles, dialogs and errors are now in French. The tray menu and the live preview's window system menu provide **À propos**, showing the CMake project version and a clickable button opening https://github.com/pdias79/magicscan. Command-line diagnostic logs remain English for existing automation compatibility.
+
+### Test on Windows
+
+Run in an **elevated interactive PowerShell** session:
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/app-icon-about-fr
+git pull origin feature/app-icon-about-fr
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Verify Explorer shows the scanner icon on both executables, the notification icon matches it, and the live preview's titlebar/taskbar displays it. From the notification area open **À propos**: ensure version and GitHub address are shown and **Ouvrir GitHub** works. Start a scan to verify existing progressive rendering, French toolbar commands and PNG/clipboard output. Test the live preview's window system menu > **À propos de MagicScan**.

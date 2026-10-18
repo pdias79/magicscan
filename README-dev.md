@@ -166,3 +166,28 @@ Verify Explorer shows the scanner icon on both executables, the notification ico
 - This control is implemented solely in `src/gui/` using the Windows common-controls trackbar; `src/usb/` is unchanged.
 
 After launching, open **À propos** and verify the icon and text have backgrounds matching the white dialog. Then scan a colorful page, adjust gamma in the live window (including darkening and brightening), select a region and verify **Copier** and **Enregistrer** preserve the displayed correction. The automatic PNG in the scan folder must still be unchanged.
+
+## PR #10: automatic USB scanner reconnection
+
+When the scanner is removed while MagicScan is running, SCSI calls fail and the old drive handle is closed as `capture_page` returns. The monitor **does not terminate**: it logs the interruption, marks the device as disconnected, waits 1.5 seconds in stop-aware increments, and re-runs scanner detection. A reconnected scanner can have a different PhysicalDrive identifier. The notification-area tooltip displays whether monitoring is paused, waiting for a scanner, or connected. No USB writes are added.
+
+An interrupted page is discarded rather than exported as a valid PNG. On the next SCAN press, the live preview resets and resumes incremental rendering normally. The stop flag is checked between retries so Pause and Quit remain responsive.
+
+### Hardware test (administrator PowerShell)
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/scanner-auto-reconnect
+git pull origin feature/scanner-auto-reconnect
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Check these cases:
+1. Launch with scanner disconnected; tooltip indicates waiting. Plug it in and scan normally without restarting.
+2. Unplug during idle surveillance; plug in again and complete a scan.
+3. Unplug mid-scan; unfinished capture should not produce a complete PNG. Replug and start a **new** scan; live preview, PNG and clipboard should work.
+4. Repeat disconnect/reconnect more than once, possibly with a different physical drive number.
+5. Pause and Quit while disconnected: MagicScan should stop in a bounded interval, without a modal error dialog.

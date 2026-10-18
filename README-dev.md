@@ -273,3 +273,17 @@ Tester ensuite l'application graphique dans PowerShell administrateur :
 ```
 
 Vérifier la disparition et le retour du scanner, l'infobulle correspondante et les scans complets après reconnexion. Simuler si possible un refus d'accès sans modifier les permissions système. La confirmation d'une utilisation sans élévation dépend des résultats matériels : ne pas promettre un fonctionnement non administrateur sans preuve.
+
+### Protection contre les instances multiples (PR #12)
+
+L'exécutable graphique `magicscan-tray.exe` utilise un mutex Windows nommé
+`Local\\MagicScanTraySingleInstance`. Sa création est atomique, y compris lorsque
+deux raccourcis sont lancés presque au même instant. Le premier processus conserve
+le mutex pendant toute sa vie. Un deuxième lancement, dans la même session Windows,
+affiche uniquement **« MagicScan est déjà en cours d’exécution. »**, puis quitte
+sans initialiser le scanner ni ajouter d'icône dans le systray. Le mutex est libéré
+lorsque la première instance s'arrête. Le CLI `magicscan.exe` reste indépendant.
+
+Test : lancer le tray, tenter un second lancement, vérifier un seul systray et
+un seul processus actif, quitter la première instance puis relancer normalement.
+Répéter avec deux lancements rapprochés.

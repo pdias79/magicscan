@@ -1,5 +1,7 @@
 #include "../core/monitor.hpp"
 #include "live_preview.hpp"
+#include "resource.hpp"
+#include "about.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <atomic>
@@ -13,6 +15,7 @@ constexpr UINT kWorkerEnded = WM_APP + 2;
 constexpr UINT kCommandToggle = 1001;
 constexpr UINT kCommandOpen = 1002;
 constexpr UINT kCommandQuit = 1003;
+constexpr UINT kCommandAbout = 1004;
 constexpr UINT kTrayId = 1;
 struct App {
     HWND window = nullptr;
@@ -26,7 +29,7 @@ App app;
 
 void update_tip() {
     app.tray.uFlags = NIF_TIP;
-    const wchar_t* text = app.running ? L"MagicScan - monitoring" : L"MagicScan - stopped";
+    const wchar_t* text = app.running ? L"MagicScan - surveillance active" : L"MagicScan - surveillance arrêtée";
     lstrcpynW(app.tray.szTip, text, ARRAYSIZE(app.tray.szTip));
     Shell_NotifyIconW(NIM_MODIFY, &app.tray);
 }
@@ -60,10 +63,11 @@ void menu(HWND hwnd) {
     HMENU m = CreatePopupMenu();
     if (!m) return;
     AppendMenuW(m, MF_STRING, kCommandToggle,
-                app.running ? L"Pause monitoring" : L"Resume monitoring");
-    AppendMenuW(m, MF_STRING, kCommandOpen, L"Open scans folder");
+                app.running ? L"Mettre en pause" : L"Reprendre la surveillance");
+    AppendMenuW(m, MF_STRING, kCommandOpen, L"Ouvrir le dossier des scans");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, kCommandQuit, L"Quit");
+    AppendMenuW(m, MF_STRING, kCommandAbout, L"À propos...");
+    AppendMenuW(m, MF_STRING, kCommandQuit, L"Quitter");
     POINT p{};
     GetCursorPos(&p);
     SetForegroundWindow(hwnd);
@@ -87,9 +91,13 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         app.tray.uID = kTrayId;
         app.tray.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         app.tray.uCallbackMessage = kTrayCallback;
-        app.tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        app.tray.hIcon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),
+            MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 0, 0,
+            LR_DEFAULTSIZE | LR_SHARED));
+        if (!app.tray.hIcon) app.tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
         lstrcpynW(app.tray.szTip, L"MagicScan", ARRAYSIZE(app.tray.szTip));
         Shell_NotifyIconW(NIM_ADD, &app.tray);
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(app.tray.hIcon));
         start_worker();
         return 0;
     case magicscan::kLivePreviewMessage:
@@ -109,6 +117,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case kCommandOpen:
             ShellExecuteW(hwnd, L"open", app.scans.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             return 0;
+        case kCommandAbout:
+            magicscan::show_about(hwnd);
+            return 0;
         case kCommandQuit:
             DestroyWindow(hwnd);
             return 0;
@@ -116,8 +127,8 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case kWorkerEnded:
         stop_worker();
-        MessageBoxW(hwnd, L"Scanner monitoring stopped after an error.\n"
-                         L"Check scanner connection and permissions before resuming.",
+        MessageBoxW(hwnd, L"La surveillance du scanner s’est arrêtée après une erreur.\n"
+                         L"Vérifiez la connexion et les autorisations avant de reprendre.",
                     L"MagicScan", MB_ICONWARNING | MB_OK);
         return 0;
     case WM_DESTROY:
@@ -147,7 +158,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
     std::error_code ec;
     std::filesystem::create_directories(app.scans, ec);
     if (ec) {
-        MessageBoxW(nullptr, L"Cannot create the scan output folder.", L"MagicScan",
+        MessageBoxW(nullptr, L"Impossible de créer le dossier de destination des scans.", L"MagicScan",
                     MB_OK | MB_ICONERROR);
         return 2;
     }
@@ -157,7 +168,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
     cls.lpszClassName = L"MagicScanTrayWindow";
     cls.lpfnWndProc = window_proc;
     if (!RegisterClassExW(&cls)) return 1;
-    HWND hwnd = CreateWindowExW(0, cls.lpszClassName, L"MagicScan Tray", 0,
+    HWND hwnd = CreateWindowExW(0, cls.lpszClassName, L"MagicScan - zone de notification", 0,
                                 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, nullptr);
     if (!hwnd) return 1;
     MSG msg{};

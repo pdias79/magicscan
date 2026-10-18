@@ -1,8 +1,12 @@
 #include "live_preview.hpp"
+#include "resource.hpp"
+#include "about.hpp"
 #include <objidl.h>
 #include <gdiplus.h>
 #include <windowsx.h>
 #include <commdlg.h>
+#include <commctrl.h>
+#include <array>
 #include <cmath>
 #include <cwchar>
 #include <algorithm>
@@ -27,10 +31,28 @@ std::deque<Event> pending;
 HWND dispatcher = nullptr;
 HWND preview = nullptr;
 std::vector<uint8_t> accumulated;
+std::vector<uint8_t> corrected;
+HWND gamma_slider = nullptr;
+constexpr int kGammaSliderId = 4701;
+int gamma_position = 100; // 20..300 maps to gamma 0.20..3.00
+std::array<uint8_t,256> gamma_table{};
+void update_gamma_table() {
+    const double gamma = static_cast<double>(gamma_position)/100.0;
+    for (int i=0;i<256;++i) {
+        const double output=255.0*std::pow(i/255.0,1.0/gamma);
+        gamma_table[static_cast<size_t>(i)]=static_cast<uint8_t>(std::clamp(static_cast<int>(std::lround(output)),0,255));
+    }
+}
+void rebuild_corrected() {
+    corrected.resize(accumulated.size());
+    for (size_t i=0;i<accumulated.size();++i)
+        corrected[i]=gamma_table[accumulated[i]];
+}
+
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
-constexpr int kToolbarHeight = 90;
+constexpr int kToolbarHeight = 142;
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -79,10 +101,10 @@ struct Tool {
     const wchar_t* label;
 };
 constexpr Tool kTools[] = {
-    {Command::Copy, L"\uE8C8", L"Copy"},
-    {Command::Save, L"\uE74E", L"Save"},
-    {Command::Clear, L"\uE711", L"Clear"},
-    {Command::Fit, L"\uE9A6", L"Fit"},
+    {Command::Copy, L"\uE8C8", L"Copier"},
+    {Command::Save, L"\uE74E", L"Enregistrer"},
+    {Command::Clear, L"\uE711", L"Effacer"},
+    {Command::Fit, L"\uE9A6", L"Ajuster"},
     {Command::ZoomIn, L"\uE8A3", L"Zoom +"},
     {Command::ZoomOut, L"\uE71F", L"Zoom -"},
 };
@@ -144,6 +166,18 @@ void draw_toolbar(HDC dc, int width) {
     }
     if (icon_font) DeleteObject(icon_font);
     if (label_font) DeleteObject(label_font);
+    SetTextColor(dc,RGB(31,43,56));
+    HFONT gamma_font=CreateFontW(-18,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+        DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH,L"Segoe UI");
+    HGDIOBJ previous_font=gamma_font?SelectObject(dc,gamma_font):nullptr;
+    wchar_t gamma_label[80]{};
+    swprintf_s(gamma_label,L"Correction gamma : %.2f",gamma_position/100.0);
+    RECT label_rect{16,94,std::min(width,330),130};
+    DrawTextW(dc,gamma_label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
+    if (previous_font) SelectObject(dc,previous_font);
+    if (gamma_font) DeleteObject(gamma_font);
+
 }
 
 
@@ -190,7 +224,7 @@ bool extract_selection(std::vector<uint8_t>& bgr,int& width,int& height) {
     for (int y=0;y<height;++y) {
         const size_t source=(static_cast<size_t>(r.top+y)*image_width+r.left)*3;
         std::memcpy(bgr.data()+static_cast<size_t>(y)*width*3,
-                    accumulated.data()+source,static_cast<size_t>(width)*3);
+                    corrected.data()+source,static_cast<size_t>(width)*3);
     }
     return true;
 }
@@ -234,19 +268,19 @@ void save_selected(HWND hwnd) {
     wchar_t file[MAX_PATH]=L"selection.png";
     OPENFILENAMEW dialog{};
     dialog.lStructSize=sizeof(dialog); dialog.hwndOwner=hwnd;
-    dialog.lpstrFilter=L"PNG images (*.png)\0*.png\0All files (*.*)\0*.*\0";
+    dialog.lpstrFilter=L"Images PNG (*.png)\0*.png\0Tous les fichiers (*.*)\0*.*\0";
     dialog.lpstrFile=file; dialog.nMaxFile=MAX_PATH;
     dialog.lpstrDefExt=L"png";
     dialog.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
     if (GetSaveFileNameW(&dialog) && !encode_png(file,pixels,w,h))
-        MessageBoxW(hwnd,L"Unable to save the selected PNG.",L"MagicScan",MB_ICONERROR);
+        MessageBoxW(hwnd,L"Impossible d’enregistrer l’image PNG sélectionnée.",L"MagicScan",MB_ICONERROR);
 }
 
 void run_tool(HWND hwnd, Command command) {
     switch (command) {
     case Command::Copy:
         if (!copy_selected(hwnd))
-            MessageBoxW(hwnd,L"Could not copy the selection.",L"MagicScan",MB_ICONWARNING);
+            MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
         break;
     case Command::Save: save_selected(hwnd); break;
     case Command::Clear:
@@ -301,7 +335,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SetStretchBltMode(dc,HALFTONE);
             StretchDIBits(dc,static_cast<int>(editor.ox),static_cast<int>(editor.oy),
                 draw_w,draw_h,0,0,image_width,image_height,
-                accumulated.data(),&info,DIB_RGB_COLORS,SRCCOPY);
+                corrected.data(),&info,DIB_RGB_COLORS,SRCCOPY);
             if (editor.selected || editor.selecting) {
                 const RECT r=selected_rect();
                 RECT outline{
@@ -318,7 +352,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 DeleteObject(pen);
             }
         } else {
-            DrawTextW(dc, L"Waiting for scan bands...", -1, &client,
+            DrawTextW(dc, L"En attente des bandes du scanner...", -1, &client,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
         RestoreDC(dc,saved_clip);
@@ -333,6 +367,18 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
+    case WM_HSCROLL:
+        if (reinterpret_cast<HWND>(lp)==gamma_slider && gamma_slider) {
+            int position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
+            if (position!=gamma_position) {
+                gamma_position=position;
+                update_gamma_table();
+                rebuild_corrected();
+                InvalidateRect(hwnd,nullptr,FALSE);
+            }
+            return 0;
+        }
+        break;
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
         if (p.y<kToolbarHeight) {
@@ -426,11 +472,15 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     }
+    case WM_SYSCOMMAND:
+        if ((wp & 0xFFF0) == 0x1F00) { show_about(hwnd); return 0; }
+        break;
     case WM_CLOSE:
         ShowWindow(hwnd, SW_HIDE);
         return 0;
     case WM_DESTROY:
         preview = nullptr;
+        gamma_slider = nullptr;
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -451,10 +501,35 @@ void ensure_window() {
         registered = RegisterClassW(&cls) != 0;
     }
     if (!registered) return;
-    preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Drag: select | Right drag: pan | Wheel: zoom | Ctrl+C: copy | Ctrl+S: save",
+    preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Prévisualisation et édition",
                               WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                               CW_USEDEFAULT, CW_USEDEFAULT, 900, 700,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (preview) {
+        INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX),ICC_BAR_CLASSES};
+        InitCommonControlsEx(&controls);
+        gamma_slider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
+            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            330,98,310,36,preview,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGammaSliderId)),
+            GetModuleHandleW(nullptr),nullptr);
+        if (gamma_slider) {
+            SendMessageW(gamma_slider,TBM_SETRANGE,TRUE,MAKELPARAM(20,300));
+            SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
+        }
+        HINSTANCE instance = GetModuleHandleW(nullptr);
+        HICON large = static_cast<HICON>(LoadImageW(instance,
+            MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 32, 32, LR_SHARED));
+        HICON small_icon = static_cast<HICON>(LoadImageW(instance,
+            MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 16, 16, LR_SHARED));
+        SendMessageW(preview, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large));
+        SendMessageW(preview, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
+        HMENU system_menu = GetSystemMenu(preview, FALSE);
+        if (system_menu) {
+            AppendMenuW(system_menu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(system_menu, MF_STRING, 0x1F00, L"À propos de MagicScan...");
+        }
+    }
 }
 void send(Event event) {
     {
@@ -465,7 +540,7 @@ void send(Event event) {
 }
 } // namespace
 
-void live_preview_initialize(HWND ui_window) { dispatcher = ui_window; }
+void live_preview_initialize(HWND ui_window) { dispatcher = ui_window; update_gamma_table(); }
 void live_preview_start() {
     Event e{};
     e.type=Event::Type::Start;
@@ -496,6 +571,10 @@ void live_preview_dispatch(UINT message) {
         switch (e.type) {
         case Event::Type::Start:
             accumulated.clear();
+            corrected.clear();
+            gamma_position=100;
+            update_gamma_table();
+            if (gamma_slider) SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
             image_width=image_height=0;
             completed=false;
             saved_path.clear();
@@ -503,7 +582,7 @@ void live_preview_dispatch(UINT message) {
             hovered_tool=-1;
             pressed_tool=-1;
             ensure_window();
-            if (preview) SetWindowTextW(preview,L"MagicScan - scanning...");
+            if (preview) SetWindowTextW(preview,L"MagicScan - numérisation en cours...");
             break;
         case Event::Type::Band:
             // 24-bit BGR rows are DWORD-aligned for 2592-pixel scanner strips.
@@ -515,13 +594,14 @@ void live_preview_dispatch(UINT message) {
             image_height+=e.height;
             // Auto-fit until the user zooms or pans manually.
             accumulated.insert(accumulated.end(),e.pixels.begin(),e.pixels.end());
+            for (uint8_t pixel : e.pixels) corrected.push_back(gamma_table[pixel]);
             if (preview) InvalidateRect(preview,nullptr,FALSE);
             break;
         case Event::Type::Complete:
             saved_path=e.file;
             completed=true;
             if (preview) {
-                SetWindowTextW(preview,L"MagicScan - scan complete (PNG saved)");
+                SetWindowTextW(preview,L"MagicScan - numérisation terminée (PNG enregistré)");
                 InvalidateRect(preview,nullptr,FALSE);
             }
             break;

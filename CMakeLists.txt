@@ -31,6 +31,7 @@ add_executable(magicscan
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/main.cpp
     src/usb/probe.cpp
+    src/usb/access_diagnostics.cpp
     src/usb/diagnostics.cpp
     src/usb/capture.cpp
     src/core/monitor.cpp

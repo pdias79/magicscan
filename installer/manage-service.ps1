@@ -17,7 +17,7 @@ if ($Action -eq 'Install') {
             $existing.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(20))
         }
         # An earlier manual service may point to a different binary.
-        & sc.exe config $name ('binPath= "{0}"' -f $binary) 'start= auto'
+        & sc.exe config $name 'binPath=' ('"{0}"' -f $binary) 'start=' 'auto'
         if ($LASTEXITCODE -ne 0) { throw 'Impossible de reconfigurer MagicScanUsb.' }
         Set-Service -Name $name -DisplayName 'MagicScan USB' -StartupType Automatic
     } else {

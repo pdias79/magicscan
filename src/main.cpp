@@ -1,4 +1,5 @@
 #include "usb/probe.hpp"
+#include "usb/access_diagnostics.hpp"
 #include "usb/capture.hpp"
 #include "gui/preview.hpp"
 #include "core/monitor.hpp"
@@ -11,6 +12,7 @@ int wmain(int argc, wchar_t** argv) {
     if (arg == L"--help" || arg == L"-h") {
         std::cout << "MagicScan 0.2 (Windows-native prototype)\n"
                   << "Usage:\n"
+                  << "  magicscan --diagnose-access     Check USB detection and Windows permissions\n"
                   << "  magicscan --probe               Read-only NOVA identification\n"
                   << "  magicscan --list-disks          Show Windows disk metadata (no SCSI probe)\n"
                   << "  magicscan --preview image.png  Native image viewer/crop tool\n"
@@ -21,6 +23,19 @@ int wmain(int argc, wchar_t** argv) {
                   << "Ctrl+C to copy selection, Ctrl+S to save PNG, Ctrl+A to select all.\n"
                   << "Full-page scanning requires hardware validation.\n";
         return 0;
+    }
+    if (arg == L"--diagnose-access" && argc == 2) {
+        const auto result=magicscan::probe_scanner();
+        std::cout << "USB scanner metadata match: " << (result.found?"yes":"no") << "\n";
+        if (result.found) std::cout << "Device path: " << result.path << "\n";
+        std::cout << "NOVA SCSI identification: " << (result.nova?"OK":"unavailable") << "\n";
+        if (!result.nova) {
+            const auto issue=magicscan::classify_scanner_issue(result.error);
+            std::cerr << "Windows diagnostic: " << result.error << "\n";
+            std::cerr << "Suggested action: " << magicscan::scanner_issue_advice(issue) << "\n";
+        }
+        std::cout << "No ACLs, services or device driver settings were modified.\n";
+        return result.nova?0:1;
     }
     if (arg == L"--preview" && argc == 3) {
         // Windows provides Unicode command-line arguments directly.

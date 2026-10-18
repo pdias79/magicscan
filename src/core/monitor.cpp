@@ -1,5 +1,6 @@
 #include "monitor.hpp"
 #include "../usb/capture.hpp"
+#include "../usb/access_diagnostics.hpp"
 #include "../gui/clipboard.hpp"
 #include <windows.h>
 #include <atomic>
@@ -72,6 +73,9 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
             std::cerr << "Scanner unavailable or scan interrupted: " << error
                       << ". Retrying automatically.\n" << std::flush;
             if (events && events->on_disconnected) events->on_disconnected();
+            const auto issue = classify_scanner_issue(error);
+            if (events && events->on_issue) events->on_issue(static_cast<int>(issue));
+            std::cerr << scanner_issue_advice(issue) << "\n" << std::flush;
             // Avoid tight retries and allow Pause/Quit to complete promptly.
             for (int n=0; n<15 && (!stop || !stop->load()); ++n)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));

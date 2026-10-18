@@ -4,6 +4,7 @@
 #include "about.hpp"
 #include "preferences.hpp"
 #include "../core/settings.hpp"
+#include "../usb/access_diagnostics.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <atomic>
@@ -15,6 +16,7 @@ namespace {
 constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kWorkerEnded = WM_APP + 2;
 constexpr UINT kScannerConnectionChanged = WM_APP + 3;
+constexpr UINT kScannerIssueChanged = WM_APP + 5;
 constexpr UINT kCommandToggle = 1001;
 constexpr UINT kCommandOpen = 1002;
 constexpr UINT kCommandQuit = 1003;
@@ -27,6 +29,7 @@ struct App {
     std::atomic_bool stop{false};
     std::atomic_bool running{false};
     std::atomic_bool connected{false};
+    magicscan::ScannerIssue issue = magicscan::ScannerIssue::None;
     std::thread worker;
     std::wstring scans;
     magicscan::UserSettings settings;
@@ -37,7 +40,7 @@ void update_tip() {
     app.tray.uFlags = NIF_TIP;
     const wchar_t* text = !app.running ? L"MagicScan - surveillance arrêtée" :
         app.connected ? L"MagicScan - scanner connecté" :
-        L"MagicScan - en attente du scanner";
+        magicscan::scanner_issue_status(app.issue);
     lstrcpynW(app.tray.szTip, text, ARRAYSIZE(app.tray.szTip));
     Shell_NotifyIconW(NIM_MODIFY, &app.tray);
 }
@@ -46,6 +49,7 @@ void stop_worker() {
     if (app.worker.joinable()) app.worker.join();
     app.running = false;
     app.connected = false;
+    app.issue=magicscan::ScannerIssue::None;
     update_tip();
 }
 void start_worker() {
@@ -54,6 +58,7 @@ void start_worker() {
     app.stop = false;
     app.running = true;
     app.connected = false;
+    app.issue=magicscan::ScannerIssue::None;
     magicscan::live_preview_set_options(app.settings.auto_clipboard,app.settings.default_gamma);
     update_tip();
     app.worker = std::thread([] {
@@ -61,6 +66,9 @@ void start_worker() {
         events.on_start = [] { magicscan::live_preview_start(); };
         events.on_connected = [] {
             PostMessageW(app.window,kScannerConnectionChanged,1,0);
+        };
+        events.on_issue = [](int issue) {
+            PostMessageW(app.window,kScannerIssueChanged,static_cast<WPARAM>(issue),0);
         };
         events.on_disconnected = [] {
             PostMessageW(app.window,kScannerConnectionChanged,0,0);
@@ -125,9 +133,16 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         app.scans=app.settings.scan_folder;
         start_worker();
         return 0;
+    case kScannerIssueChanged:
+        if (app.running && !app.connected) {
+            app.issue=static_cast<magicscan::ScannerIssue>(wp);
+            update_tip();
+        }
+        return 0;
     case kScannerConnectionChanged:
         if (app.running) {
             app.connected = (wp != 0);
+            if (app.connected) app.issue=magicscan::ScannerIssue::None;
             update_tip();
         }
         return 0;
@@ -176,6 +191,26 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
+    // Session-scoped named mutex: atomic even when two shortcuts start at once.
+    // A second launch never starts the USB worker or creates another tray icon.
+    HANDLE single_instance = CreateMutexW(nullptr, FALSE, L"Local\\MagicScanTraySingleInstance");
+    if (!single_instance) {
+        MessageBoxW(nullptr, L"Impossible de vérifier si MagicScan est déjà lancé.",
+                    L"MagicScan", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    const DWORD mutex_error = GetLastError();
+    if (mutex_error == ERROR_ALREADY_EXISTS) {
+        // A running instance already owns the tray icon and scanner monitor.
+        // Do not display a notification or initialize another instance.
+        CloseHandle(single_instance);
+        return 0;
+    }
+    struct MutexGuard {
+        HANDLE handle;
+        ~MutexGuard() { CloseHandle(handle); }
+    } guard{single_instance};
+
     if (command_line && *command_line) {
         app.scans = command_line;
         if (app.scans.size() >= 2 && app.scans.front() == L'"' &&

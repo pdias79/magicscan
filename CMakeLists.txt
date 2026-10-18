@@ -13,7 +13,8 @@ add_executable(magicscan
     src/usb/probe.cpp
     src/usb/diagnostics.cpp
     src/usb/capture.cpp
-    src/monitor/monitor.cpp
+    src/core/monitor.cpp
+    src/gui/clipboard.cpp
     src/gui/preview.cpp
 )
 target_include_directories(magicscan PRIVATE src)

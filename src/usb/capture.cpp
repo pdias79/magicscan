@@ -219,6 +219,7 @@ bool capture_page(const std::wstring& output_png, std::string& error,
         error = "Scanner open failed: Windows error " + std::to_string(GetLastError());
         return false;
     }
+    if (events && events->on_connected) events->on_connected();
     using Clock = std::chrono::steady_clock;
     const auto started = Clock::now();
     // Generous emergency guard, not a page-height limit.

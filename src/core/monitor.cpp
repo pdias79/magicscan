@@ -3,6 +3,8 @@
 #include "../gui/clipboard.hpp"
 #include <windows.h>
 #include <atomic>
+#include <chrono>
+#include <thread>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -64,8 +66,16 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
         // a finite safety deadline in capture_page.
         if (!capture_page(output, error, true, stop, events)) {
             if (stop && stop->load()) return 0;
-            std::cerr << "Monitoring interrupted: " << error << "\n";
-            return 1;
+            // A USB disconnect invalidates the existing PhysicalDrive handle.
+            // capture_page owns and closes that handle; retrying probes Windows
+            // anew, so a reconnect with a different PhysicalDrive number works.
+            std::cerr << "Scanner unavailable or scan interrupted: " << error
+                      << ". Retrying automatically.\n" << std::flush;
+            if (events && events->on_disconnected) events->on_disconnected();
+            // Avoid tight retries and allow Pause/Quit to complete promptly.
+            for (int n=0; n<15 && (!stop || !stop->load()); ++n)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
         }
         std::wcout << L"Saved: " << output << L"\n" << std::flush;
         if (clipboard) {

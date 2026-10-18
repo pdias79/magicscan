@@ -12,6 +12,7 @@
 namespace {
 constexpr UINT kTrayCallback = WM_APP + 1;
 constexpr UINT kWorkerEnded = WM_APP + 2;
+constexpr UINT kScannerConnectionChanged = WM_APP + 3;
 constexpr UINT kCommandToggle = 1001;
 constexpr UINT kCommandOpen = 1002;
 constexpr UINT kCommandQuit = 1003;
@@ -22,6 +23,7 @@ struct App {
     NOTIFYICONDATAW tray{};
     std::atomic_bool stop{false};
     std::atomic_bool running{false};
+    std::atomic_bool connected{false};
     std::thread worker;
     std::wstring scans;
 };
@@ -29,7 +31,9 @@ App app;
 
 void update_tip() {
     app.tray.uFlags = NIF_TIP;
-    const wchar_t* text = app.running ? L"MagicScan - surveillance active" : L"MagicScan - surveillance arrêtée";
+    const wchar_t* text = !app.running ? L"MagicScan - surveillance arrêtée" :
+        app.connected ? L"MagicScan - scanner connecté" :
+        L"MagicScan - en attente du scanner";
     lstrcpynW(app.tray.szTip, text, ARRAYSIZE(app.tray.szTip));
     Shell_NotifyIconW(NIM_MODIFY, &app.tray);
 }
@@ -37,6 +41,7 @@ void stop_worker() {
     app.stop = true;
     if (app.worker.joinable()) app.worker.join();
     app.running = false;
+    app.connected = false;
     update_tip();
 }
 void start_worker() {
@@ -44,10 +49,17 @@ void start_worker() {
     if (app.worker.joinable()) app.worker.join();
     app.stop = false;
     app.running = true;
+    app.connected = false;
     update_tip();
     app.worker = std::thread([] {
         magicscan::ScanEvents events{};
         events.on_start = [] { magicscan::live_preview_start(); };
+        events.on_connected = [] {
+            PostMessageW(app.window,kScannerConnectionChanged,1,0);
+        };
+        events.on_disconnected = [] {
+            PostMessageW(app.window,kScannerConnectionChanged,0,0);
+        };
         events.on_band = [](const std::vector<uint8_t>& pixels, uint32_t width, uint32_t lines) {
             magicscan::live_preview_band(pixels,width,lines);
         };
@@ -99,6 +111,12 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         Shell_NotifyIconW(NIM_ADD, &app.tray);
         SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(app.tray.hIcon));
         start_worker();
+        return 0;
+    case kScannerConnectionChanged:
+        if (app.running) {
+            app.connected = (wp != 0);
+            update_tip();
+        }
         return 0;
     case magicscan::kLivePreviewMessage:
         magicscan::live_preview_dispatch(msg);

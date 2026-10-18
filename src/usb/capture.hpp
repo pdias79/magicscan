@@ -12,6 +12,10 @@ namespace magicscan {
 // Scanner events carry decoded BGR scanlines, never Win32 GUI objects.
 struct ScanEvents {
     std::function<void()> on_start;
+    // Invoked when a scanner handle is successfully opened; GUI may update status.
+    std::function<void()> on_connected;
+    // Monitoring reports a dropped scanner until the next successful reopen.
+    std::function<void()> on_disconnected;
     std::function<void(const std::vector<uint8_t>&, uint32_t, uint32_t)> on_band;
     std::function<void(const std::wstring&)> on_complete;
 };

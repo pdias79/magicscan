@@ -1,4 +1,5 @@
 #include "../core/monitor.hpp"
+#include "live_preview.hpp"
 #include <windows.h>
 #include <shellapi.h>
 #include <atomic>
@@ -42,7 +43,15 @@ void start_worker() {
     app.running = true;
     update_tip();
     app.worker = std::thread([] {
-        const int code = magicscan::monitor_scans(app.scans, true, &app.stop);
+        magicscan::ScanEvents events{};
+        events.on_start = [] { magicscan::live_preview_start(); };
+        events.on_band = [](const std::vector<uint8_t>& pixels, uint32_t width, uint32_t lines) {
+            magicscan::live_preview_band(pixels,width,lines);
+        };
+        events.on_complete = [](const std::wstring& file) {
+            magicscan::live_preview_complete(file);
+        };
+        const int code = magicscan::monitor_scans(app.scans, true, &app.stop, &events);
         if (!app.stop && code != 0)
             PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
     });
@@ -72,6 +81,7 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_CREATE:
         app.window = hwnd;
+        magicscan::live_preview_initialize(hwnd);
         app.tray.cbSize = sizeof(app.tray);
         app.tray.hWnd = hwnd;
         app.tray.uID = kTrayId;
@@ -81,6 +91,9 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         lstrcpynW(app.tray.szTip, L"MagicScan", ARRAYSIZE(app.tray.szTip));
         Shell_NotifyIconW(NIM_ADD, &app.tray);
         start_worker();
+        return 0;
+    case magicscan::kLivePreviewMessage:
+        magicscan::live_preview_dispatch(msg);
         return 0;
     case kTrayCallback:
         if (lp == WM_RBUTTONUP || lp == WM_CONTEXTMENU) menu(hwnd);

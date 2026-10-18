@@ -51,12 +51,11 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
     if (pipe == INVALID_HANDLE_VALUE) return false;
     // Set bounded synchronous reads so Pause/Quit cannot hang indefinitely.
     // Cancellation from another thread uses CancelSynchronousIo on worker thread.
-    bool success = true;
     std::vector<uint8_t> page;
     if (events && events->on_connected) events->on_connected();
     while (!stop || !stop->load()) {
         Header head{};
-        if (!read_exact(pipe, &head, sizeof(head), stop)) { success = false; break; }
+        if (!read_exact(pipe, &head, sizeof(head), stop)) { break; }
         if ((head.kind == kStart || head.kind == kFinish || head.kind == kConnected ||
              head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { success = false; break; }
         if (head.kind == kStart) {
@@ -77,7 +76,6 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
                 filename = unique_path(directory);
                 std::string error;
                 if (filename.empty() || !write_page_png(filename, page, page.size() / kBytes, error)) {
-                    success = false;
                     break;
                 }
             }
@@ -96,7 +94,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
         }
     }
     CloseHandle(pipe);
-    if (!success && events && events->on_disconnected) events->on_disconnected();
+    if ((!stop || !stop->load()) && events && events->on_disconnected) events->on_disconnected();
     return (stop && stop->load()) ? 0 : 1;
 }
 }

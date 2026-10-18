@@ -2,6 +2,7 @@
 #include "resource.hpp"
 #include "version.hpp"
 #include <shellapi.h>
+#include <initializer_list>
 #include <string>
 
 namespace magicscan {
@@ -80,10 +81,11 @@ void show_about(HWND owner) {
         registered = RegisterClassW(&cls) != 0;
     }
     if (!registered) return;
+    HWND visible_owner = owner && IsWindowVisible(owner) ? owner : nullptr;
     about_window = CreateWindowExW(WS_EX_DLGMODALFRAME,
         L"MagicScanAboutWindow", L"À propos de MagicScan",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, 470, 255,
-        owner, nullptr, instance, nullptr);
+        visible_owner, nullptr, instance, nullptr);
 }
 } // namespace magicscan

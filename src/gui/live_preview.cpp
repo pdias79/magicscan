@@ -321,7 +321,12 @@ void save_selected(HWND hwnd) {
     const wchar_t* ext = dialog.nFilterIndex==2 ? L".jpg" :
                          dialog.nFilterIndex==3 ? L".pdf" : L".png";
     // Always make file format match the filter chosen in the dialog.
+    const auto requested = path;
     path.replace_extension(ext);
+    if (path != requested && std::filesystem::exists(path)) {
+        if (MessageBoxW(hwnd, L"Ce fichier existe déjà. Voulez-vous le remplacer ?",
+                        L"MagicScan", MB_YESNO | MB_ICONWARNING) != IDYES) return;
+    }
     bool ok=false;
     if (dialog.nFilterIndex==2) ok=export_jpeg(path.wstring(),pixels,w,h);
     else if (dialog.nFilterIndex==3) ok=export_pdf(path.wstring(),pixels,w,h);

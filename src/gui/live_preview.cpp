@@ -116,6 +116,7 @@ constexpr Tool kTools[] = {
     {Command::Fit, L"\uE9A6", L"Ajuster"},
     {Command::ZoomIn, L"\uE8A3", L"Zoom +"},
     {Command::ZoomOut, L"\uE71F", L"Zoom -"},
+    {Command::Rotate, L"\uE7AD", L"Tourner"},
 };
 int hovered_tool = -1;
 int pressed_tool = -1;
@@ -405,7 +406,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_HSCROLL:
+    case WM_HSCROLL: {
         HWND scrolled=reinterpret_cast<HWND>(lp);
         if (scrolled==gamma_slider || scrolled==brightness_slider || scrolled==contrast_slider) {
             if (scrolled==gamma_slider) gamma_position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
@@ -417,6 +418,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         break;
+    }
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
         if (p.y<kToolbarHeight) {

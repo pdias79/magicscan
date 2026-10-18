@@ -583,11 +583,21 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
+void raise_preview_for_scan() {
+    if (!preview) return;
+    ShowWindow(preview, IsIconic(preview) ? SW_RESTORE : SW_SHOW);
+    // A physical SCAN press does not grant foreground permission to the tray.
+    // Temporarily raise the window above others, then immediately restore its
+    // normal z-order so it does not remain always-on-top.
+    SetWindowPos(preview, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(preview, HWND_NOTOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetForegroundWindow(preview); // Best effort: Windows may deny focus.
+}
 void ensure_window() {
     if (preview) {
-        ShowWindow(preview, IsIconic(preview) ? SW_RESTORE : SW_SHOW);
-        BringWindowToTop(preview);
-        SetForegroundWindow(preview);
+        raise_preview_for_scan();
         return;
     }
     static bool registered = false;
@@ -712,9 +722,7 @@ void live_preview_dispatch(UINT message) {
             pressed_tool=-1;
             ensure_window();
             if (preview) {
-                ShowWindow(preview, IsIconic(preview) ? SW_RESTORE : SW_SHOW);
-                BringWindowToTop(preview);
-                SetForegroundWindow(preview);
+                raise_preview_for_scan();
                 SetWindowTextW(preview,L"MagicScan - numérisation en cours...");
             }
             break;

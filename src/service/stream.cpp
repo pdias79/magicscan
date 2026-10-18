@@ -43,7 +43,7 @@ std::wstring unique_path(const std::filesystem::path& folder) {
 }
 } // namespace
 
-bool monitor_remote(const std::wstring& directory, bool auto_save,
+int monitor_remote(const std::wstring& directory, bool auto_save,
                     std::atomic_bool* stop, const ScanEvents* events) {
     if (!WaitNamedPipeW(kStreamPipePath, 2000)) return false;
     HANDLE pipe = CreateFileW(kStreamPipePath, GENERIC_READ, 0, nullptr,
@@ -97,6 +97,6 @@ bool monitor_remote(const std::wstring& directory, bool auto_save,
     }
     CloseHandle(pipe);
     if (!success && events && events->on_disconnected) events->on_disconnected();
-    return success || (stop && stop->load());
+    return (stop && stop->load()) ? 0 : 1;
 }
 }

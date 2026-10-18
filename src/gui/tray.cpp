@@ -1,4 +1,5 @@
 #include "../core/monitor.hpp"
+#include "../service/stream.hpp"
 #include "live_preview.hpp"
 #include "resource.hpp"
 #include "about.hpp"
@@ -46,7 +47,10 @@ void update_tip() {
 }
 void stop_worker() {
     app.stop = true;
-    if (app.worker.joinable()) app.worker.join();
+    if (app.worker.joinable()) {
+        CancelSynchronousIo(static_cast<HANDLE>(app.worker.native_handle()));
+        app.worker.join();
+    }
     app.running = false;
     app.connected = false;
     app.issue=magicscan::ScannerIssue::None;
@@ -79,8 +83,13 @@ void start_worker() {
         events.on_complete = [](const std::wstring& file) {
             magicscan::live_preview_complete(file);
         };
-        const int code = magicscan::monitor_scans(app.scans, false, &app.stop, &events,
-                                                  app.settings.auto_save);
+        // Prefer the privileged acquisition service when available. A failed
+        // connection falls back to the established direct capture path.
+        const int remote = magicscan::service::monitor_remote(
+            app.scans, app.settings.auto_save, &app.stop, &events);
+        const int code = remote >= 0 || app.stop ? (remote > 0 ? 1 : 0)
+            : magicscan::monitor_scans(app.scans, false, &app.stop, &events,
+                                      app.settings.auto_save);
         if (!app.stop && code != 0)
             PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
     });

@@ -1,4 +1,5 @@
 #include "usb/probe.hpp"
+#include "service/client.hpp"
 #include "usb/access_diagnostics.hpp"
 #include "usb/capture.hpp"
 #include "gui/preview.hpp"
@@ -12,6 +13,7 @@ int wmain(int argc, wchar_t** argv) {
     if (arg == L"--help" || arg == L"-h") {
         std::cout << "MagicScan 0.2 (Windows-native prototype)\n"
                   << "Usage:\n"
+                  << "  magicscan --service-status       Check privileged scanner service without admin rights\n"
                   << "  magicscan --diagnose-access     Check USB detection and Windows permissions\n"
                   << "  magicscan --probe               Read-only NOVA identification\n"
                   << "  magicscan --list-disks          Show Windows disk metadata (no SCSI probe)\n"
@@ -24,6 +26,7 @@ int wmain(int argc, wchar_t** argv) {
                   << "Full-page scanning requires hardware validation.\n";
         return 0;
     }
+    if (arg == L"--service-status" && argc == 2) return magicscan::service::query_status();
     if (arg == L"--diagnose-access" && argc == 2) {
         const auto result=magicscan::probe_scanner();
         std::cout << "USB scanner metadata match: " << (result.found?"yes":"no") << "\n";

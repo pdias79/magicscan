@@ -45,6 +45,12 @@ LRESULT CALLBACK about_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (control) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         return 0;
     }
+    case WM_CTLCOLORSTATIC: {
+        HDC dc = reinterpret_cast<HDC>(wp);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, RGB(25, 25, 25));
+        return reinterpret_cast<INT_PTR>(GetStockObject(WHITE_BRUSH));
+    }
     case WM_COMMAND:
         if (LOWORD(wp) == kOpenGithub) {
             ShellExecuteW(hwnd, L"open", MAGICSCAN_GITHUB, nullptr, nullptr, SW_SHOWNORMAL);

@@ -1,6 +1,7 @@
 #include "usb/probe.hpp"
 #include "usb/capture.hpp"
 #include "gui/preview.hpp"
+#include "monitor/monitor.hpp"
 #include <windows.h>
 #include <iostream>
 #include <string>
@@ -15,6 +16,7 @@ int wmain(int argc, wchar_t** argv) {
                   << "  magicscan --preview image.png  Native image viewer/crop tool\n"
                   << "  magicscan --capture-band out.png  Read one fresh scanner strip (experimental)\n"
                   << "  magicscan --capture-page out.png  Assemble a complete scan (experimental)\n"
+                  << "  magicscan --monitor DIR [--no-clipboard]  Repeated PNG and clipboard scans\n"
                   << "Viewer: left drag to select, right drag to pan, wheel to zoom,\n"
                   << "Ctrl+C to copy selection, Ctrl+S to save PNG, Ctrl+A to select all.\n"
                   << "Full-page scanning requires hardware validation.\n";
@@ -28,6 +30,13 @@ int wmain(int argc, wchar_t** argv) {
     if (arg == L"--list-disks" && argc == 2) {
         magicscan::list_disk_devices();
         return 0;
+    }
+    if (arg == L"--monitor" && (argc == 3 || argc == 4)) {
+        if (argc == 4 && std::wstring(argv[3]) != L"--no-clipboard") {
+            std::cerr << "Unknown monitor option. Try --help\n";
+            return 2;
+        }
+        return magicscan::monitor_scans(argv[2], argc == 3);
     }
     if (arg == L"--capture-page" && argc == 3) {
         std::string error;

@@ -7,9 +7,10 @@ Current capabilities:
 - `magicscan --list-disks`: print storage device descriptors and open/query errors **without issuing any vendor SCSI commands**. Use to diagnose scanner discovery without administrator privileges. Redact disk serial numbers before sharing output.
 - `magicscan --preview scan.png`: native image preview with selection, zoom, pan, clipboard copy and PNG export.
 - `magicscan --capture-band out.png`: validated **read-only** capture of one fresh 2592×192 RGB strip (requires elevated PowerShell on currently tested Windows setup).
-- `magicscan --capture-page out.png`: **experimental, hardware validation pending**. Start the command first, press SCAN to begin scanning, press SCAN a second time to stop; strips are assembled vertically into one PNG. The reader waits for pending data after stop and requires scanner access as administrator on the tested system.
+- `magicscan --capture-page out.png`: validated single-page acquisition. Start the command first, press SCAN to start and again to stop; the image strips are assembled into one PNG.
+- `magicscan --monitor DIR`: experimental console-based continuous capture. Wait for button-triggered scans, save each PNG in DIR with a unique timestamped filename, and copy the saved image to the Windows clipboard as CF_DIB (24-bit DIB). `--no-clipboard` disables copying while retaining PNG export. Keep the console running; use Ctrl+C to exit. Test clipboard functionality by pasting into Paint or Word from the same interactive Windows desktop. Console monitoring still requires elevation on the tested system.
 
-**Not yet implemented in C++:** automated background monitoring, user-configured output directory, and automatic preview after scan. Full-page capture is experimental and not yet validated on actual hardware. The previously established USB acquisition protocol is specified in `docs/usb-protocol.md`.
+**Not yet implemented in C++:** hidden system-tray process, automatic start at Windows login, automatic preview after scan, and permission-free SCSI device access. Monitoring currently runs in an open console and requires elevated PowerShell on the tested setup. Repeated scans and clipboard behavior require hardware testing. The previously established USB acquisition protocol is specified in `docs/usb-protocol.md`.
 
 ## Set up VS Code
 
@@ -18,7 +19,7 @@ Install Git, VS Code, and Visual Studio 2022 Build Tools with the **Desktop deve
 ```powershell
 git clone https://github.com/pdias79/magicscan.git
 cd magicscan
-git switch feature/usb-capture
+git switch feature/continuous-monitor
 code .
 ```
 
@@ -34,6 +35,7 @@ cmake --build build --config Release
 .\build\Release\magicscan.exe --probe
 .\build\Release\magicscan.exe --capture-band "C:\Scans\band.png"
 .\build\Release\magicscan.exe --capture-page "C:\Scans\page.png"
+.\build\Release\magicscan.exe --monitor "C:\Scans"
 .\build\Release\magicscan.exe --preview "C:\Scans\example.png"
 ```
 

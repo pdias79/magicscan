@@ -288,7 +288,8 @@ bool capture_first_band(const std::wstring& output_png, std::string& error) {
     return write_png(output_png,strip,error);
 }
 
-bool capture_page(const std::wstring& output_png, std::string& error) {
+bool capture_page(const std::wstring& output_png, std::string& error,
+                  bool wait_for_start_forever) {
     const auto scanner = probe_scanner();
     if (!scanner.found || !scanner.nova) {
         error = "Scanner identification failed: " + scanner.error;
@@ -304,7 +305,7 @@ bool capture_page(const std::wstring& output_png, std::string& error) {
     using Clock = std::chrono::steady_clock;
     const auto started = Clock::now();
     // Generous emergency guard, not a page-height limit.
-    const auto deadline = started + std::chrono::minutes(5);
+    auto deadline = started + std::chrono::minutes(5);
     auto last_band = started;
     auto previous_active = started;
     bool active = false;
@@ -316,11 +317,12 @@ bool capture_page(const std::wstring& output_png, std::string& error) {
     std::vector<uint8_t> pixels;
     constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
     std::cout << "Ready. Press SCAN to begin, press SCAN again to finish.\n" << std::flush;
-    while (Clock::now() < deadline) {
+    while ((wait_for_start_forever && !session_started) || Clock::now() < deadline) {
         bool scanning = false;
         if (!poll_button(device.value, scanning, error)) return false;
         if (scanning && !active) {
             session_started = true;
+            deadline = Clock::now() + std::chrono::minutes(5);
             stop_seen = false;
             std::cout << "Scan started\n" << std::flush;
         }

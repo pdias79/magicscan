@@ -17,25 +17,28 @@ constexpr uint32_t kBytes = kWidth * kRows * 3;
 constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
 struct Header { uint32_t kind; uint32_t size; };
 enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6 };
-bool read_exact(HANDLE pipe, void* data, DWORD length, const std::atomic_bool* stop) {
-    // A synchronous pipe read can stay blocked after the service is stopped.
-    // Poll availability so stop/restart is detected without restarting the GUI.
+bool read_exact(HANDLE pipe, void* data, DWORD length, const std::atomic_bool* stop,
+                bool wait_for_header = false) {
+    // Poll only between messages, never for image payloads: polling each
+    // fragment delays large bands and can backpressure the scanner.
     auto* out = static_cast<unsigned char*>(data);
     DWORD done = 0;
     auto last_progress = std::chrono::steady_clock::now();
     while (done < length && (!stop || !stop->load())) {
-        DWORD available = 0;
-        if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr))
-            return false; // Broken pipe / service stopped.
-        if (available == 0) {
-            if (std::chrono::steady_clock::now() - last_progress >
-                std::chrono::seconds(10))
-                return false; // Missing heartbeat, stalled service.
-            Sleep(50);
-            continue;
+        DWORD amount = length - done;
+        if (wait_for_header) {
+            DWORD available = 0;
+            if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr))
+                return false;
+            if (available == 0) {
+                if (std::chrono::steady_clock::now() - last_progress >
+                    std::chrono::seconds(10)) return false;
+                Sleep(50);
+                continue;
+            }
+            amount = std::min<DWORD>(amount, available);
         }
         DWORD received = 0;
-        const DWORD amount = std::min<DWORD>(length - done, available);
         if (!ReadFile(pipe, out + done, amount, &received, nullptr) || !received)
             return false;
         done += received;
@@ -72,7 +75,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
     if (events && events->on_connected) events->on_connected();
     while (!stop || !stop->load()) {
         Header head{};
-        if (!read_exact(pipe, &head, sizeof(head), stop)) { break; }
+        if (!read_exact(pipe, &head, sizeof(head), stop, true)) { break; }
         if ((head.kind == kStart || head.kind == kFinish || head.kind == kConnected ||
              head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { break; }
         if (head.kind == kStart) {

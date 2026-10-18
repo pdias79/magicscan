@@ -297,10 +297,11 @@ bool capture_page(const std::wstring& output_png, std::string& error,
         return false;
     }
     const size_t bands=pixels.size()/kBandSize;
-    if (!write_page_png(output_png,pixels,bands,error)) return false;
+    // Empty output path explicitly means memory-only capture (no disk writes).
+    if (!output_png.empty() && !write_page_png(output_png,pixels,bands,error)) return false;
     if (events && events->on_complete) events->on_complete(output_png);
-    std::cout << "Saved " << bands << " bands (" << kWidth << "x" << bands*kLines
-              << ") to PNG\n";
+    std::cout << "Captured " << bands << " bands (" << kWidth << "x" << bands*kLines
+              << (output_png.empty() ? ") in memory\n" : ") to PNG\n");
     return true;
 }
 } // namespace magicscan

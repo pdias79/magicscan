@@ -34,6 +34,7 @@ add_executable(magicscan
     src/usb/diagnostics.cpp
     src/usb/capture.cpp
     src/core/monitor.cpp
+    src/core/settings.cpp
     src/core/image_writer.cpp
     src/gui/clipboard.cpp
     src/gui/preview.cpp
@@ -44,6 +45,8 @@ add_executable(magicscan-tray WIN32
     src/gui/tray.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/gui/about.cpp
+    src/gui/preferences.cpp
+    src/core/settings.cpp
     src/gui/live_preview.cpp
     src/gui/clipboard.cpp
     src/core/monitor.cpp

@@ -35,11 +35,20 @@ std::vector<uint8_t> corrected;
 HWND gamma_slider = nullptr;
 constexpr int kGammaSliderId = 4701;
 int gamma_position = 100; // 20..300 maps to gamma 0.20..3.00
+int default_gamma = 100;
+bool auto_clipboard = true;
+HWND brightness_slider = nullptr;
+HWND contrast_slider = nullptr;
+constexpr int kBrightnessId = 4702;
+constexpr int kContrastId = 4703;
+int brightness = 0; // -100..100
+int contrast = 100; // 50..150 (100 = neutral)
 std::array<uint8_t,256> gamma_table{};
 void update_gamma_table() {
     const double gamma = static_cast<double>(gamma_position)/100.0;
     for (int i=0;i<256;++i) {
-        const double output=255.0*std::pow(i/255.0,1.0/gamma);
+        const double normalized=std::pow(i/255.0,1.0/gamma);
+        const double output=(normalized*255.0-127.5)*contrast/100.0+127.5+brightness*1.27;
         gamma_table[static_cast<size_t>(i)]=static_cast<uint8_t>(std::clamp(static_cast<int>(std::lround(output)),0,255));
     }
 }
@@ -52,7 +61,10 @@ void rebuild_corrected() {
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
-constexpr int kToolbarHeight = 142;
+constexpr int kCollapsedToolbarHeight = 90;
+constexpr int kExpandedToolbarHeight = 244;
+bool adjustments_visible = false;
+int toolbar_height() { return adjustments_visible ? kExpandedToolbarHeight : kCollapsedToolbarHeight; }
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -72,13 +84,13 @@ RECT selected_rect() {
 void fit_view(HWND hwnd) {
     if (!image_width || !image_height) return;
     RECT client{}; GetClientRect(hwnd,&client);
-    const int w=client.right-client.left, h=client.bottom-client.top-kToolbarHeight;
+    const int w=client.right-client.left, h=client.bottom-client.top-toolbar_height();
     if (w<=0 || h<=0) return;
     editor.zoom=std::min(static_cast<double>(w-24)/image_width,
                          static_cast<double>(h-24)/image_height);
     editor.zoom=std::clamp(editor.zoom,0.02,15.0);
     editor.ox=(w-image_width*editor.zoom)/2;
-    editor.oy=kToolbarHeight+(h-image_height*editor.zoom)/2;
+    editor.oy=toolbar_height()+(h-image_height*editor.zoom)/2;
 }
 void zoom_at(POINT p,double factor) {
     const double previous=editor.zoom;
@@ -94,7 +106,7 @@ constexpr int kButtonWidth = 92;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;
 constexpr int kToolbarGap = 8;
-enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut };
+enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
 struct Tool {
     Command command;
     const wchar_t* glyph;
@@ -107,6 +119,8 @@ constexpr Tool kTools[] = {
     {Command::Fit, L"\uE9A6", L"Ajuster"},
     {Command::ZoomIn, L"\uE8A3", L"Zoom +"},
     {Command::ZoomOut, L"\uE71F", L"Zoom -"},
+    {Command::Rotate, L"\uE7AD", L"Tourner"},
+    {Command::Adjustments, L"\uE713", L"Réglages"},
 };
 int hovered_tool = -1;
 int pressed_tool = -1;
@@ -118,15 +132,32 @@ int tool_at(POINT p) {
     }
     return -1;
 }
+void layout_adjustment_sliders(HWND hwnd) {
+    if (!hwnd) return;
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    const int available=std::max(120,static_cast<int>(rc.right)-270);
+    HWND sliders[]={gamma_slider,brightness_slider,contrast_slider};
+    for (int row=0;row<3;++row) {
+        if (!sliders[row]) continue;
+        MoveWindow(sliders[row],240,102+row*46,available,33,TRUE);
+        ShowWindow(sliders[row],adjustments_visible?SW_SHOW:SW_HIDE);
+    }
+}
+void toggle_adjustments(HWND hwnd) {
+    adjustments_visible=!adjustments_visible;
+    layout_adjustment_sliders(hwnd);
+    if (editor.auto_fit) fit_view(hwnd);
+    InvalidateRect(hwnd,nullptr,FALSE);
+}
 void draw_toolbar(HDC dc, int width) {
-    RECT background{0,0,width,kToolbarHeight};
+    RECT background{0,0,width,toolbar_height()};
     HBRUSH bar=CreateSolidBrush(RGB(238,241,246));
     FillRect(dc,&background,bar);
     DeleteObject(bar);
     HPEN separator=CreatePen(PS_SOLID,1,RGB(203,210,220));
     HGDIOBJ previous=SelectObject(dc,separator);
-    MoveToEx(dc,0,kToolbarHeight-1,nullptr);
-    LineTo(dc,width,kToolbarHeight-1);
+    MoveToEx(dc,0,toolbar_height()-1,nullptr);
+    LineTo(dc,width,toolbar_height()-1);
     SelectObject(dc,previous);
     DeleteObject(separator);
 
@@ -166,17 +197,28 @@ void draw_toolbar(HDC dc, int width) {
     }
     if (icon_font) DeleteObject(icon_font);
     if (label_font) DeleteObject(label_font);
-    SetTextColor(dc,RGB(31,43,56));
-    HFONT gamma_font=CreateFontW(-18,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
-        DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
-        DEFAULT_PITCH,L"Segoe UI");
-    HGDIOBJ previous_font=gamma_font?SelectObject(dc,gamma_font):nullptr;
-    wchar_t gamma_label[80]{};
-    swprintf_s(gamma_label,L"Correction gamma : %.2f",gamma_position/100.0);
-    RECT label_rect{16,94,std::min(width,330),130};
-    DrawTextW(dc,gamma_label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
-    if (previous_font) SelectObject(dc,previous_font);
-    if (gamma_font) DeleteObject(gamma_font);
+    if (adjustments_visible) {
+        HBRUSH panel=CreateSolidBrush(RGB(238,241,246));
+        RECT area{0,kCollapsedToolbarHeight,width,toolbar_height()-1};
+        FillRect(dc,&area,panel);
+        DeleteObject(panel);
+        HFONT font=CreateFontW(-17,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+            DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+            DEFAULT_PITCH,L"Segoe UI");
+        HGDIOBJ previous_font=font?SelectObject(dc,font):nullptr;
+        SetTextColor(dc,RGB(31,43,56));
+        wchar_t label[96]{};
+        const wchar_t* captions[]={L"Gamma",L"Luminosité",L"Contraste"};
+        for (int row=0; row<3; ++row) {
+            if (row==0) swprintf_s(label,L"%s : %.2f",captions[row],gamma_position/100.0);
+            if (row==1) swprintf_s(label,L"%s : %d",captions[row],brightness);
+            if (row==2) swprintf_s(label,L"%s : %d %%",captions[row],contrast);
+            RECT label_rect{24,99+row*46,236,139+row*46};
+            DrawTextW(dc,label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
+        }
+        if (previous_font) SelectObject(dc,previous_font);
+        if (font) DeleteObject(font);
+    }
 
 }
 
@@ -293,10 +335,33 @@ void run_tool(HWND hwnd, Command command) {
         fit_view(hwnd);
         InvalidateRect(hwnd,nullptr,FALSE);
         break;
+    case Command::Adjustments:
+        toggle_adjustments(hwnd);
+        break;
+    case Command::Rotate: {
+        if (!completed || accumulated.empty()) break;
+        const uint32_t old_width=image_width, old_height=image_height;
+        std::vector<uint8_t> rotated(accumulated.size());
+        for (uint32_t y=0;y<old_height;++y)
+            for (uint32_t x=0;x<old_width;++x) {
+                const size_t src=(static_cast<size_t>(y)*old_width+x)*3;
+                const size_t dst=(static_cast<size_t>(x)*old_height+(old_height-1-y))*3;
+                std::memcpy(rotated.data()+dst,accumulated.data()+src,3);
+            }
+        accumulated.swap(rotated);
+        image_width=old_height;
+        image_height=old_width;
+        editor.selected=false;
+        editor.selecting=false;
+        editor.auto_fit=true;
+        rebuild_corrected();
+        InvalidateRect(hwnd,nullptr,FALSE);
+        break;
+    }
     case Command::ZoomIn:
     case Command::ZoomOut: {
         RECT rc{}; GetClientRect(hwnd,&rc);
-        POINT center{(rc.left+rc.right)/2,(kToolbarHeight+rc.bottom)/2};
+        POINT center{(rc.left+rc.right)/2,(toolbar_height()+rc.bottom)/2};
         zoom_at(center,command==Command::ZoomIn?1.2:1.0/1.2);
         InvalidateRect(hwnd,nullptr,FALSE);
         break;
@@ -320,7 +385,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HDC dc = old_bitmap ? buffer_dc : screen_dc;
         FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
         const int saved_clip=SaveDC(dc);
-        IntersectClipRect(dc,0,kToolbarHeight,paint_width,paint_height);
+        IntersectClipRect(dc,0,toolbar_height(),paint_width,paint_height);
         if (image_width && image_height && !accumulated.empty()) {
             if (editor.auto_fit) fit_view(hwnd);
             BITMAPINFO info{};
@@ -358,7 +423,20 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         RestoreDC(dc,saved_clip);
         draw_toolbar(dc,paint_width);
         if (old_bitmap) {
+            // The trackbars are native child windows, not part of our backing bitmap.
+            // Never blit the parent surface over them while dragging their thumbs.
+            const int original_clip=SaveDC(screen_dc);
+            const HWND sliders[]={gamma_slider,brightness_slider,contrast_slider};
+            for (HWND slider : sliders) {
+                if (!slider || !IsWindowVisible(slider)) continue;
+                RECT bounds{};
+                if (GetWindowRect(slider,&bounds)) {
+                    MapWindowPoints(nullptr,hwnd,reinterpret_cast<POINT*>(&bounds),2);
+                    ExcludeClipRect(screen_dc,bounds.left,bounds.top,bounds.right,bounds.bottom);
+                }
+            }
             BitBlt(screen_dc,0,0,paint_width,paint_height,buffer_dc,0,0,SRCCOPY);
+            RestoreDC(screen_dc,original_clip);
             SelectObject(buffer_dc,old_bitmap);
         }
         if (backing_bitmap) DeleteObject(backing_bitmap);
@@ -367,21 +445,39 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_HSCROLL:
-        if (reinterpret_cast<HWND>(lp)==gamma_slider && gamma_slider) {
-            int position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
-            if (position!=gamma_position) {
-                gamma_position=position;
-                update_gamma_table();
-                rebuild_corrected();
-                InvalidateRect(hwnd,nullptr,FALSE);
+    case WM_SIZE:
+        layout_adjustment_sliders(hwnd);
+        InvalidateRect(hwnd,nullptr,FALSE);
+        // During interactive resize, paint immediately rather than waiting for mouse release.
+        UpdateWindow(hwnd);
+        return 0;
+    case WM_SIZING:
+        RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW|RDW_NOERASE);
+        break;
+    case WM_HSCROLL: {
+        HWND scrolled=reinterpret_cast<HWND>(lp);
+        if (scrolled==gamma_slider || scrolled==brightness_slider || scrolled==contrast_slider) {
+            if (scrolled==gamma_slider) gamma_position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
+            if (scrolled==brightness_slider) brightness=static_cast<int>(SendMessageW(brightness_slider,TBM_GETPOS,0,0));
+            if (scrolled==contrast_slider) contrast=static_cast<int>(SendMessageW(contrast_slider,TBM_GETPOS,0,0));
+            update_gamma_table();
+            rebuild_corrected();
+            // Repaint labels and pixels, but avoid invalidating the trackbars.
+            RECT image_area{};
+            GetClientRect(hwnd,&image_area);
+            image_area.top=toolbar_height();
+            InvalidateRect(hwnd,&image_area,FALSE);
+            if (adjustments_visible) {
+                RECT labels{0,kCollapsedToolbarHeight,240,toolbar_height()};
+                InvalidateRect(hwnd,&labels,FALSE);
             }
             return 0;
         }
         break;
+    }
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
-        if (p.y<kToolbarHeight) {
+        if (p.y<toolbar_height()) {
             pressed_tool=tool_at(p);
             if (pressed_tool>=0) { SetCapture(hwnd); InvalidateRect(hwnd,nullptr,FALSE); }
             return 0;
@@ -457,7 +553,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const bool ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0;
         if (ctrl) {
             if (wp=='C' && !copy_selected(hwnd))
-                MessageBoxW(hwnd,L"Could not copy the selection.",L"MagicScan",MB_ICONWARNING);
+                MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
             if (wp=='S') save_selected(hwnd);
             if (wp=='A') { editor.selected=false; InvalidateRect(hwnd,nullptr,FALSE); }
             return 0;
@@ -481,6 +577,8 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         preview = nullptr;
         gamma_slider = nullptr;
+        brightness_slider=nullptr;
+        contrast_slider=nullptr;
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -502,21 +600,40 @@ void ensure_window() {
     }
     if (!registered) return;
     preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Prévisualisation et édition",
-                              WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                              WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
                               CW_USEDEFAULT, CW_USEDEFAULT, 900, 700,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (preview) {
         INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX),ICC_BAR_CLASSES};
         InitCommonControlsEx(&controls);
         gamma_slider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
-            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
-            330,98,310,36,preview,
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,102,400,33,preview,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGammaSliderId)),
             GetModuleHandleW(nullptr),nullptr);
         if (gamma_slider) {
             SendMessageW(gamma_slider,TBM_SETRANGE,TRUE,MAKELPARAM(20,300));
             SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
         }
+        brightness_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,148,400,33,preview,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBrightnessId)),
+            GetModuleHandleW(nullptr),nullptr);
+        if (brightness_slider) {
+            SendMessageW(brightness_slider,TBM_SETRANGE,TRUE,MAKELPARAM(-100,100));
+            SendMessageW(brightness_slider,TBM_SETPOS,TRUE,brightness);
+        }
+        contrast_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,194,400,33,preview,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kContrastId)),
+            GetModuleHandleW(nullptr),nullptr);
+        if (contrast_slider) {
+            SendMessageW(contrast_slider,TBM_SETRANGE,TRUE,MAKELPARAM(50,150));
+            SendMessageW(contrast_slider,TBM_SETPOS,TRUE,contrast);
+        }
+        layout_adjustment_sliders(preview);
         HINSTANCE instance = GetModuleHandleW(nullptr);
         HICON large = static_cast<HICON>(LoadImageW(instance,
             MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 32, 32, LR_SHARED));
@@ -541,6 +658,13 @@ void send(Event event) {
 } // namespace
 
 void live_preview_initialize(HWND ui_window) { dispatcher = ui_window; update_gamma_table(); }
+void live_preview_set_options(bool clipboard, int gamma) {
+    auto_clipboard=clipboard;
+    default_gamma=std::clamp(gamma,20,300);
+    gamma_position=default_gamma;
+    update_gamma_table();
+    if (gamma_slider) SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
+}
 void live_preview_start() {
     Event e{};
     e.type=Event::Type::Start;
@@ -572,7 +696,11 @@ void live_preview_dispatch(UINT message) {
         case Event::Type::Start:
             accumulated.clear();
             corrected.clear();
-            gamma_position=100;
+            gamma_position=default_gamma;
+            brightness=0;
+            contrast=100;
+            if (brightness_slider) SendMessageW(brightness_slider,TBM_SETPOS,TRUE,brightness);
+            if (contrast_slider) SendMessageW(contrast_slider,TBM_SETPOS,TRUE,contrast);
             update_gamma_table();
             if (gamma_slider) SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
             image_width=image_height=0;
@@ -601,7 +729,9 @@ void live_preview_dispatch(UINT message) {
             saved_path=e.file;
             completed=true;
             if (preview) {
-                SetWindowTextW(preview,L"MagicScan - numérisation terminée (PNG enregistré)");
+                SetWindowTextW(preview,e.file.empty()?L"MagicScan - numérisation terminée (en mémoire)":L"MagicScan - numérisation terminée (PNG enregistré)");
+                if (auto_clipboard && !copy_selected(preview))
+                    MessageBoxW(preview,L"Impossible de copier la numérisation.",L"MagicScan",MB_ICONWARNING);
                 InvalidateRect(preview,nullptr,FALSE);
             }
             break;

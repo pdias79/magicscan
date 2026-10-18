@@ -39,15 +39,15 @@ std::wstring unique_filename(const fs::path& directory) {
 } // namespace
 
 int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_bool* stop,
-                  const ScanEvents* events) {
+                  const ScanEvents* events, bool auto_save) {
     if (directory.empty()) {
         std::cerr << "Output directory must not be empty.\n";
         return 2;
     }
     const fs::path folder(directory);
     std::error_code ec;
-    fs::create_directories(folder, ec);
-    if (ec || !fs::is_directory(folder, ec)) {
+    if (auto_save) fs::create_directories(folder, ec);
+    if (auto_save && (ec || !fs::is_directory(folder, ec))) {
         std::cerr << "Output folder cannot be created or accessed.\n";
         return 2;
     }
@@ -56,8 +56,8 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
     std::cout << "Leave this terminal open; press Ctrl+C to stop.\n" << std::flush;
 
     while (!stop || !stop->load()) {
-        const std::wstring output = unique_filename(folder);
-        if (output.empty()) {
+        const std::wstring output = auto_save ? unique_filename(folder) : L"";
+        if (auto_save && output.empty()) {
             std::cerr << "Cannot assign a unique scan filename.\n";
             return 1;
         }
@@ -77,8 +77,8 @@ int monitor_scans(const std::wstring& directory, bool clipboard, std::atomic_boo
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
-        std::wcout << L"Saved: " << output << L"\n" << std::flush;
-        if (clipboard) {
+        if (auto_save) std::wcout << L"Saved: " << output << L"\n" << std::flush;
+        if (clipboard && auto_save) {
             if (copy_png_to_clipboard(output, error))
                 std::cout << "CF_DIB image placed on Windows clipboard.\n" << std::flush;
             else

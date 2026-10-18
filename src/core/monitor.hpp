@@ -5,5 +5,6 @@
 namespace magicscan {
 int monitor_scans(const std::wstring& directory, bool clipboard,
                   std::atomic_bool* stop = nullptr,
-                  const ScanEvents* events = nullptr);
+                  const ScanEvents* events = nullptr,
+                  bool auto_save = true);
 }

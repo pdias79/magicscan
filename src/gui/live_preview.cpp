@@ -35,11 +35,20 @@ std::vector<uint8_t> corrected;
 HWND gamma_slider = nullptr;
 constexpr int kGammaSliderId = 4701;
 int gamma_position = 100; // 20..300 maps to gamma 0.20..3.00
+int default_gamma = 100;
+bool auto_clipboard = true;
+HWND brightness_slider = nullptr;
+HWND contrast_slider = nullptr;
+constexpr int kBrightnessId = 4702;
+constexpr int kContrastId = 4703;
+int brightness = 0; // -100..100
+int contrast = 100; // 50..150 (100 = neutral)
 std::array<uint8_t,256> gamma_table{};
 void update_gamma_table() {
     const double gamma = static_cast<double>(gamma_position)/100.0;
     for (int i=0;i<256;++i) {
-        const double output=255.0*std::pow(i/255.0,1.0/gamma);
+        const double normalized=std::pow(i/255.0,1.0/gamma);
+        const double output=(normalized*255.0-127.5)*contrast/100.0+127.5+brightness*1.27;
         gamma_table[static_cast<size_t>(i)]=static_cast<uint8_t>(std::clamp(static_cast<int>(std::lround(output)),0,255));
     }
 }
@@ -52,7 +61,7 @@ void rebuild_corrected() {
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
-constexpr int kToolbarHeight = 142;
+constexpr int kToolbarHeight = 194;
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -94,7 +103,7 @@ constexpr int kButtonWidth = 92;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;
 constexpr int kToolbarGap = 8;
-enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut };
+enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate };
 struct Tool {
     Command command;
     const wchar_t* glyph;
@@ -177,6 +186,15 @@ void draw_toolbar(HDC dc, int width) {
     DrawTextW(dc,gamma_label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
     if (previous_font) SelectObject(dc,previous_font);
     if (gamma_font) DeleteObject(gamma_font);
+    wchar_t light_label[80]{};
+    swprintf_s(light_label,L"Luminosité : %d",brightness);
+    RECT light_rect{16,140,std::min(width,270),174};
+    DrawTextW(dc,light_label,-1,&light_rect,DT_SINGLELINE|DT_VCENTER);
+    wchar_t contrast_label[80]{};
+    swprintf_s(contrast_label,L"Contraste : %d %%",contrast);
+    RECT contrast_rect{370,140,std::min(width,640),174};
+    DrawTextW(dc,contrast_label,-1,&contrast_rect,DT_SINGLELINE|DT_VCENTER);
+
 
 }
 
@@ -293,6 +311,26 @@ void run_tool(HWND hwnd, Command command) {
         fit_view(hwnd);
         InvalidateRect(hwnd,nullptr,FALSE);
         break;
+    case Command::Rotate: {
+        if (!completed || accumulated.empty()) break;
+        const uint32_t old_width=image_width, old_height=image_height;
+        std::vector<uint8_t> rotated(accumulated.size());
+        for (uint32_t y=0;y<old_height;++y)
+            for (uint32_t x=0;x<old_width;++x) {
+                const size_t src=(static_cast<size_t>(y)*old_width+x)*3;
+                const size_t dst=(static_cast<size_t>(x)*old_height+(old_height-1-y))*3;
+                std::memcpy(rotated.data()+dst,accumulated.data()+src,3);
+            }
+        accumulated.swap(rotated);
+        image_width=old_height;
+        image_height=old_width;
+        editor.selected=false;
+        editor.selecting=false;
+        editor.auto_fit=true;
+        rebuild_corrected();
+        InvalidateRect(hwnd,nullptr,FALSE);
+        break;
+    }
     case Command::ZoomIn:
     case Command::ZoomOut: {
         RECT rc{}; GetClientRect(hwnd,&rc);
@@ -368,14 +406,14 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_ERASEBKGND: return 1;
     case WM_HSCROLL:
-        if (reinterpret_cast<HWND>(lp)==gamma_slider && gamma_slider) {
-            int position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
-            if (position!=gamma_position) {
-                gamma_position=position;
-                update_gamma_table();
-                rebuild_corrected();
-                InvalidateRect(hwnd,nullptr,FALSE);
-            }
+        HWND scrolled=reinterpret_cast<HWND>(lp);
+        if (scrolled==gamma_slider || scrolled==brightness_slider || scrolled==contrast_slider) {
+            if (scrolled==gamma_slider) gamma_position=static_cast<int>(SendMessageW(gamma_slider,TBM_GETPOS,0,0));
+            if (scrolled==brightness_slider) brightness=static_cast<int>(SendMessageW(brightness_slider,TBM_GETPOS,0,0));
+            if (scrolled==contrast_slider) contrast=static_cast<int>(SendMessageW(contrast_slider,TBM_GETPOS,0,0));
+            update_gamma_table();
+            rebuild_corrected();
+            InvalidateRect(hwnd,nullptr,FALSE);
             return 0;
         }
         break;
@@ -481,6 +519,8 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         preview = nullptr;
         gamma_slider = nullptr;
+        brightness_slider=nullptr;
+        contrast_slider=nullptr;
         return 0;
     }
     return DefWindowProcW(hwnd, msg, wp, lp);
@@ -517,6 +557,24 @@ void ensure_window() {
             SendMessageW(gamma_slider,TBM_SETRANGE,TRUE,MAKELPARAM(20,300));
             SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
         }
+        brightness_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
+            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            160,143,190,35,preview,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBrightnessId)),
+            GetModuleHandleW(nullptr),nullptr);
+        if (brightness_slider) {
+            SendMessageW(brightness_slider,TBM_SETRANGE,TRUE,MAKELPARAM(-100,100));
+            SendMessageW(brightness_slider,TBM_SETPOS,TRUE,brightness);
+        }
+        contrast_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
+            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            510,143,190,35,preview,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kContrastId)),
+            GetModuleHandleW(nullptr),nullptr);
+        if (contrast_slider) {
+            SendMessageW(contrast_slider,TBM_SETRANGE,TRUE,MAKELPARAM(50,150));
+            SendMessageW(contrast_slider,TBM_SETPOS,TRUE,contrast);
+        }
         HINSTANCE instance = GetModuleHandleW(nullptr);
         HICON large = static_cast<HICON>(LoadImageW(instance,
             MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 32, 32, LR_SHARED));
@@ -541,6 +599,13 @@ void send(Event event) {
 } // namespace
 
 void live_preview_initialize(HWND ui_window) { dispatcher = ui_window; update_gamma_table(); }
+void live_preview_set_options(bool clipboard, int gamma) {
+    auto_clipboard=clipboard;
+    default_gamma=std::clamp(gamma,20,300);
+    gamma_position=default_gamma;
+    update_gamma_table();
+    if (gamma_slider) SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
+}
 void live_preview_start() {
     Event e{};
     e.type=Event::Type::Start;
@@ -572,7 +637,11 @@ void live_preview_dispatch(UINT message) {
         case Event::Type::Start:
             accumulated.clear();
             corrected.clear();
-            gamma_position=100;
+            gamma_position=default_gamma;
+            brightness=0;
+            contrast=100;
+            if (brightness_slider) SendMessageW(brightness_slider,TBM_SETPOS,TRUE,brightness);
+            if (contrast_slider) SendMessageW(contrast_slider,TBM_SETPOS,TRUE,contrast);
             update_gamma_table();
             if (gamma_slider) SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
             image_width=image_height=0;
@@ -601,7 +670,9 @@ void live_preview_dispatch(UINT message) {
             saved_path=e.file;
             completed=true;
             if (preview) {
-                SetWindowTextW(preview,L"MagicScan - numérisation terminée (PNG enregistré)");
+                SetWindowTextW(preview,e.file.empty()?L"MagicScan - numérisation terminée (en mémoire)":L"MagicScan - numérisation terminée (PNG enregistré)");
+                if (auto_clipboard && !copy_selected(preview))
+                    MessageBoxW(preview,L"Impossible de copier la numérisation.",L"MagicScan",MB_ICONWARNING);
                 InvalidateRect(preview,nullptr,FALSE);
             }
             break;

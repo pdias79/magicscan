@@ -191,6 +191,26 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
+    // Session-scoped named mutex: atomic even when two shortcuts start at once.
+    // A second launch never starts the USB worker or creates another tray icon.
+    HANDLE single_instance = CreateMutexW(nullptr, FALSE, L"Local\\MagicScanTraySingleInstance");
+    if (!single_instance) {
+        MessageBoxW(nullptr, L"Impossible de vérifier si MagicScan est déjà lancé.",
+                    L"MagicScan", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    const DWORD mutex_error = GetLastError();
+    if (mutex_error == ERROR_ALREADY_EXISTS) {
+        CloseHandle(single_instance);
+        MessageBoxW(nullptr, L"MagicScan est déjà en cours d’exécution.",
+                    L"MagicScan", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
+    struct MutexGuard {
+        HANDLE handle;
+        ~MutexGuard() { CloseHandle(handle); }
+    } guard{single_instance};
+
     if (command_line && *command_line) {
         app.scans = command_line;
         if (app.scans.size() >= 2 && app.scans.front() == L'"' &&

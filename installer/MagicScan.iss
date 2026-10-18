@@ -29,7 +29,7 @@ Source: "..\build\Release\magicscan-usb-service.exe"; DestDir: "{app}\Service"; 
 Source: "manage-service.ps1"; DestDir: "{app}\Installer"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\MagicScan"; Filename: "{app}\{#MyAppExeName}"
+Name: "{commonprograms}\MagicScan"; Filename: "{app}\{#MyAppExeName}"; Comment: "Numériser avec MagicScan et le scanner NOVA"
 Name: "{group}\Désinstaller MagicScan"; Filename: "{uninstallexe}"
 Name: "{commonstartup}\MagicScan"; Filename: "{app}\{#MyAppExeName}"
 

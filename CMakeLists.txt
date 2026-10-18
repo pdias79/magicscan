@@ -17,6 +17,23 @@ add_executable(magicscan
     src/gui/clipboard.cpp
     src/gui/preview.cpp
 )
+# GUI is deliberately a separate executable. The CLI remains suitable for
+# scanner diagnostics and capture tests without a graphical shell.
+add_executable(magicscan-tray WIN32
+    src/gui/tray.cpp
+    src/gui/clipboard.cpp
+    src/core/monitor.cpp
+    src/usb/probe.cpp
+    src/usb/capture.cpp
+)
+target_include_directories(magicscan-tray PRIVATE src)
+target_compile_definitions(magicscan-tray PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+target_link_libraries(magicscan-tray PRIVATE gdiplus gdi32 user32 shell32)
+if(MSVC)
+    target_compile_options(magicscan-tray PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(magicscan-tray PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 target_include_directories(magicscan PRIVATE src)
 target_compile_definitions(magicscan PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(magicscan PRIVATE setupapi gdiplus comdlg32 gdi32 user32)

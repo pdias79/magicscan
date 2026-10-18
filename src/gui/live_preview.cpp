@@ -135,7 +135,7 @@ int tool_at(POINT p) {
 void layout_adjustment_sliders(HWND hwnd) {
     if (!hwnd) return;
     RECT rc{}; GetClientRect(hwnd,&rc);
-    const int available=std::max(120,rc.right-270);
+    const int available=std::max(120,static_cast<int>(rc.right)-270);
     HWND sliders[]={gamma_slider,brightness_slider,contrast_slider};
     for (int row=0;row<3;++row) {
         if (!sliders[row]) continue;

@@ -63,6 +63,7 @@ void rebuild_corrected() {
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
+bool preview_dismissed = false; // Ignore remaining bands after a user closes the preview.
 constexpr int kCollapsedToolbarHeight = 90;
 constexpr int kExpandedToolbarHeight = 244;
 bool adjustments_visible = false;
@@ -104,11 +105,11 @@ void zoom_at(POINT p,double factor) {
 
 std::wstring saved_path;
 
-constexpr int kButtonWidth = 92;
+constexpr int kButtonWidth = 100;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;
-constexpr int kToolbarGap = 8;
-enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
+constexpr int kToolbarGap = 4;
+enum class Command { Copy, CopyClose, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
 struct Tool {
     Command command;
     const wchar_t* glyph;
@@ -116,6 +117,7 @@ struct Tool {
 };
 constexpr Tool kTools[] = {
     {Command::Copy, L"\uE8C8", L"Copier"},
+    {Command::CopyClose, L"\uE8C8", L"Copier et fermer"},
     {Command::Save, L"\uE74E", L"Enregistrer"},
     {Command::Clear, L"\uE711", L"Effacer"},
     {Command::Fit, L"\uE9A6", L"Ajuster"},
@@ -336,11 +338,25 @@ void save_selected(HWND hwnd) {
                     L"MagicScan",MB_ICONERROR);
 }
 
+void dismiss_preview(HWND hwnd) {
+    preview_dismissed = true;
+    std::vector<uint8_t>().swap(accumulated);
+    std::vector<uint8_t>().swap(corrected);
+    image_width = image_height = 0;
+    completed = false;
+    saved_path.clear();
+    editor = Editor{};
+    ShowWindow(hwnd, SW_HIDE);
+}
 void run_tool(HWND hwnd, Command command) {
     switch (command) {
     case Command::Copy:
         if (!copy_selected(hwnd))
             MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
+        break;
+    case Command::CopyClose:
+        if (copy_selected(hwnd)) dismiss_preview(hwnd);
+        else MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
         break;
     case Command::Save: save_selected(hwnd); break;
     case Command::Clear:
@@ -388,6 +404,15 @@ void run_tool(HWND hwnd, Command command) {
 }
 LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+    case WM_SETCURSOR:
+        if (LOWORD(lp) == HTCLIENT) {
+            POINT p{};
+            GetCursorPos(&p);
+            ScreenToClient(hwnd, &p);
+            SetCursor(LoadCursorW(nullptr, p.y >= toolbar_height() ? IDC_CROSS : IDC_ARROW));
+            return TRUE;
+        }
+        break;
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         HDC screen_dc = BeginPaint(hwnd, &ps);
@@ -590,7 +615,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if ((wp & 0xFFF0) == 0x1F00) { show_about(hwnd); return 0; }
         break;
     case WM_CLOSE:
-        ShowWindow(hwnd, SW_HIDE);
+        dismiss_preview(hwnd);
         return 0;
     case WM_DESTROY:
         preview = nullptr;
@@ -723,8 +748,9 @@ void live_preview_dispatch(UINT message) {
     for (auto& e : events) {
         switch (e.type) {
         case Event::Type::Start:
-            accumulated.clear();
-            corrected.clear();
+            preview_dismissed = false;
+            std::vector<uint8_t>().swap(accumulated);
+            std::vector<uint8_t>().swap(corrected);
             gamma_position=default_gamma;
             brightness=0;
             contrast=100;
@@ -745,6 +771,7 @@ void live_preview_dispatch(UINT message) {
             }
             break;
         case Event::Type::Band:
+            if (preview_dismissed) break;
             // 24-bit BGR rows are DWORD-aligned for 2592-pixel scanner strips.
             if (e.width!=2592 || e.height!=192 ||
                 e.pixels.size()!=static_cast<size_t>(e.width)*e.height*3)
@@ -758,6 +785,7 @@ void live_preview_dispatch(UINT message) {
             if (preview) InvalidateRect(preview,nullptr,FALSE);
             break;
         case Event::Type::Complete:
+            if (preview_dismissed) break;
             saved_path=e.file;
             completed=true;
             if (preview) {

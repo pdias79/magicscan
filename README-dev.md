@@ -92,3 +92,29 @@ cmake --build build --config Release
 ```
 
 Begin a scan using the physical SCAN button: the preview should appear immediately and grow by one image band every time a strip arrives. Press SCAN again to finish, then verify the saved PNG and clipboard. For this first revision, zoom/crop editing remains in the existing `magicscan --preview` tool; direct editor integration will be refined after hardware validation.
+
+## Editable live preview (PR #7)
+
+The live scan window now supports rectangular selection (left drag), pan (right drag), zoom (wheel or +/-), Ctrl+C (copy selected region as CF_DIB), Ctrl+S (save selected region to a PNG via Save As), and Ctrl+A (clear selection). Selection defaults to the entire accumulated page. The preview remains visible after each scan and resets for the next one. PNG saving and automatic clipboard export by the monitor continue unchanged.
+
+USB protocol and band decoding remain in `src/usb/`; scan orchestration in `src/core/`; Win32 rendering, user editing and clipboard operation in `src/gui/`. On test Windows systems launch in elevated interactive PowerShell:
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/live-preview-editing
+git pull origin feature/live-preview-editing
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Scan a page; confirm the display grows during the scan. Draw a rectangle over the finished image; press Ctrl+C and paste into Paint, and press Ctrl+S to save a cropped PNG. Zoom/pan and scan again without closing the window. The Windows clipboard is still updated with each new full-page scan as previously established.
+
+### Live preview refinement
+
+- **Escape** cancels the active rectangular selection. Ctrl+C/Ctrl+S then target the complete image.
+- The rectangle is anchored in **image pixel coordinates**. Wheel/+/- zoom and right-drag pan transform the displayed outline without changing the selected pixel region.
+- The live window draws each frame to an off-screen GDI bitmap and blits once to suppress selection/pan flicker.
+
+Test with a scan: select a distinctive small area, zoom several times, pan, then copy it to Paint; copied pixels and PNG dimensions must remain unchanged. Press Escape and copy again; the full page should be used.

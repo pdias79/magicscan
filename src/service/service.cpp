@@ -63,8 +63,18 @@ void serve() {
             const char reply = magicscan::probe_scanner().nova
                 ? magicscan::service::kReady : magicscan::service::kUnavailable;
             DWORD written = 0;
-            WriteFile(pipe, &reply, 1, &written, nullptr);
-            FlushFileBuffers(pipe);
+            OVERLAPPED write_overlap{};
+            write_overlap.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (write_overlap.hEvent) {
+                const BOOL write_ok = WriteFile(pipe, &reply, 1, &written, &write_overlap);
+                if (!write_ok && GetLastError() == ERROR_IO_PENDING) {
+                    HANDLE wait_events[] = {stop_event, write_overlap.hEvent};
+                    if (WaitForMultipleObjects(2, wait_events, FALSE, 5000) != WAIT_OBJECT_0 + 1)
+                        CancelIoEx(pipe, &write_overlap);
+                    GetOverlappedResult(pipe, &write_overlap, &written, TRUE);
+                }
+                CloseHandle(write_overlap.hEvent);
+            }
             DisconnectNamedPipe(pipe);
         }
         CloseHandle(pipe);

@@ -287,6 +287,7 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             Clock::now()-previous_active>=std::chrono::seconds(5)) {
             error="Scan ended but no image bands were captured"; return false;
         }
+        if (events && events->on_tick) events->on_tick();
         Sleep(60);
     }
     if (pixels.empty()) {

@@ -23,7 +23,19 @@ if(NOT MAGICSCAN_ICON_RESULT EQUAL 0)
     message(FATAL_ERROR "Could not generate Windows icon: ${MAGICSCAN_ICON_ERROR}")
 endif()
 file(TO_CMAKE_PATH "${MAGICSCAN_ICON_OUTPUT}" MAGICSCAN_ICON_PATH)
-configure_file(cmake/magicscan.rc.in "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc" @ONLY)
+# rc.exe can misinterpret UTF-8 source strings when generating VERSIONINFO.
+# Emit UTF-16LE with BOM, which rc.exe reads as Unicode without code-page guessing.
+configure_file(cmake/magicscan.rc.in "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc.utf8" @ONLY)
+execute_process(
+    COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+        -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/write-unicode-rc.ps1" -Source
+        "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc.utf8"
+        -Destination "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc"
+    RESULT_VARIABLE MAGICSCAN_RC_RESULT
+)
+if(NOT MAGICSCAN_RC_RESULT EQUAL 0)
+    message(FATAL_ERROR "Could not write UTF-16 Windows version resource")
+endif()
 configure_file(cmake/version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/version.hpp" @ONLY)
 
 

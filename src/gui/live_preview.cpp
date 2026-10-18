@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <algorithm>
 #include <cstring>
+#include <malloc.h>
 #include <deque>
 #include <filesystem>
 #include <mutex>
@@ -63,8 +64,9 @@ void rebuild_corrected() {
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
-constexpr int kCollapsedToolbarHeight = 90;
-constexpr int kExpandedToolbarHeight = 244;
+bool preview_dismissed = false; // Ignore remaining bands after a user closes the preview.
+constexpr int kCollapsedToolbarHeight = 108;
+constexpr int kExpandedToolbarHeight = 262;
 bool adjustments_visible = false;
 int toolbar_height() { return adjustments_visible ? kExpandedToolbarHeight : kCollapsedToolbarHeight; }
 struct Editor {
@@ -104,11 +106,11 @@ void zoom_at(POINT p,double factor) {
 
 std::wstring saved_path;
 
-constexpr int kButtonWidth = 92;
-constexpr int kButtonHeight = 76;
+constexpr int kButtonWidth = 115;
+constexpr int kButtonHeight = 92;
 constexpr int kToolbarLeft = 12;
-constexpr int kToolbarGap = 8;
-enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
+constexpr int kToolbarGap = 4;
+enum class Command { Copy, CopyClose, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
 struct Tool {
     Command command;
     const wchar_t* glyph;
@@ -116,6 +118,7 @@ struct Tool {
 };
 constexpr Tool kTools[] = {
     {Command::Copy, L"\uE8C8", L"Copier"},
+    {Command::CopyClose, L"\uE8C8", L"Copier et fermer"},
     {Command::Save, L"\uE74E", L"Enregistrer"},
     {Command::Clear, L"\uE711", L"Effacer"},
     {Command::Fit, L"\uE9A6", L"Ajuster"},
@@ -166,7 +169,7 @@ void draw_toolbar(HDC dc, int width) {
     HFONT icon_font=CreateFontW(-31,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
         DEFAULT_PITCH,L"Segoe MDL2 Assets");
-    HFONT label_font=CreateFontW(-16,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+    HFONT label_font=CreateFontW(-14,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
         DEFAULT_PITCH,L"Segoe UI");
     SetBkMode(dc,TRANSPARENT);
@@ -191,9 +194,12 @@ void draw_toolbar(HDC dc, int width) {
         }
         if (label_font) {
             HGDIOBJ old_font=SelectObject(dc,label_font);
-            RECT label{x+2,54,x+kButtonWidth-2,79};
+            RECT label{x+4,52,x+kButtonWidth-4,7+kButtonHeight-7};
             SetTextColor(dc,RGB(31,43,56));
-            DrawTextW(dc,kTools[i].label,-1,&label,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            const wchar_t* caption = kTools[i].command == Command::CopyClose
+                ? L"Copier et\nfermer" : kTools[i].label;
+            // Keep two short lines for the longest caption, including DPI scaling.
+            DrawTextW(dc,caption,-1,&label,DT_CENTER|DT_TOP|DT_WORDBREAK|DT_NOPREFIX);
             SelectObject(dc,old_font);
         }
     }
@@ -336,11 +342,33 @@ void save_selected(HWND hwnd) {
                     L"MagicScan",MB_ICONERROR);
 }
 
+void dismiss_preview(HWND hwnd) {
+    preview_dismissed = true;
+    std::vector<uint8_t>().swap(accumulated);
+    std::vector<uint8_t>().swap(corrected);
+    image_width = image_height = 0;
+    completed = false;
+    saved_path.clear();
+    editor = Editor{};
+    ShowWindow(hwnd, SW_HIDE);
+    // Large scans release their vectors above. Encourage the CRT allocator to
+    // return any completely free heap pages to Windows, without discarding the
+    // independently owned clipboard image.
+    _heapmin();
+    // Scan buffers are gone; release idle resident pages retained by the heap.
+    // This reduces working set, not the memory required by future scans.
+    SetProcessWorkingSetSize(GetCurrentProcess(),
+                             static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+}
 void run_tool(HWND hwnd, Command command) {
     switch (command) {
     case Command::Copy:
         if (!copy_selected(hwnd))
             MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
+        break;
+    case Command::CopyClose:
+        if (copy_selected(hwnd)) dismiss_preview(hwnd);
+        else MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
         break;
     case Command::Save: save_selected(hwnd); break;
     case Command::Clear:
@@ -388,6 +416,15 @@ void run_tool(HWND hwnd, Command command) {
 }
 LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
+    case WM_SETCURSOR:
+        if (LOWORD(lp) == HTCLIENT) {
+            POINT p{};
+            GetCursorPos(&p);
+            ScreenToClient(hwnd, &p);
+            SetCursor(LoadCursorW(nullptr, p.y >= toolbar_height() ? IDC_CROSS : IDC_ARROW));
+            return TRUE;
+        }
+        break;
     case WM_PAINT: {
         PAINTSTRUCT ps{};
         HDC screen_dc = BeginPaint(hwnd, &ps);
@@ -435,7 +472,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 DeleteObject(pen);
             }
         } else {
-            DrawTextW(dc, L"En attente des bandes du scanner...", -1, &client,
+            DrawTextW(dc, L"Glisser le scanner vers le bas", -1, &client,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
         RestoreDC(dc,saved_clip);
@@ -590,7 +627,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if ((wp & 0xFFF0) == 0x1F00) { show_about(hwnd); return 0; }
         break;
     case WM_CLOSE:
-        ShowWindow(hwnd, SW_HIDE);
+        dismiss_preview(hwnd);
         return 0;
     case WM_DESTROY:
         preview = nullptr;
@@ -630,7 +667,7 @@ void ensure_window() {
     if (!registered) return;
     preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Prévisualisation et édition",
                               WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 900, 700,
+                              CW_USEDEFAULT, CW_USEDEFAULT, 1100, 700,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (preview) {
         INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX),ICC_BAR_CLASSES};
@@ -723,8 +760,9 @@ void live_preview_dispatch(UINT message) {
     for (auto& e : events) {
         switch (e.type) {
         case Event::Type::Start:
-            accumulated.clear();
-            corrected.clear();
+            preview_dismissed = false;
+            std::vector<uint8_t>().swap(accumulated);
+            std::vector<uint8_t>().swap(corrected);
             gamma_position=default_gamma;
             brightness=0;
             contrast=100;
@@ -745,6 +783,7 @@ void live_preview_dispatch(UINT message) {
             }
             break;
         case Event::Type::Band:
+            if (preview_dismissed) break;
             // 24-bit BGR rows are DWORD-aligned for 2592-pixel scanner strips.
             if (e.width!=2592 || e.height!=192 ||
                 e.pixels.size()!=static_cast<size_t>(e.width)*e.height*3)
@@ -758,6 +797,7 @@ void live_preview_dispatch(UINT message) {
             if (preview) InvalidateRect(preview,nullptr,FALSE);
             break;
         case Event::Type::Complete:
+            if (preview_dismissed) break;
             saved_path=e.file;
             completed=true;
             if (preview) {

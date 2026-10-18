@@ -85,10 +85,11 @@ void start_worker() {
         };
         // Prefer the privileged acquisition service when available. A failed
         // connection falls back to the established direct capture path.
-        const bool remote = magicscan::service::monitor_remote(
+        const int remote = magicscan::service::monitor_remote(
             app.scans, app.settings.auto_save, &app.stop, &events);
-        const int code = remote || app.stop ? 0 : magicscan::monitor_scans(
-            app.scans, false, &app.stop, &events, app.settings.auto_save);
+        const int code = remote >= 0 || app.stop ? (remote > 0 ? 1 : 0)
+            : magicscan::monitor_scans(app.scans, false, &app.stop, &events,
+                                      app.settings.auto_save);
         if (!app.stop && code != 0)
             PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
     });

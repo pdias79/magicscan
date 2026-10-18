@@ -280,8 +280,7 @@ L'exécutable graphique `magicscan-tray.exe` utilise un mutex Windows nommé
 `Local\\MagicScanTraySingleInstance`. Sa création est atomique, y compris lorsque
 deux raccourcis sont lancés presque au même instant. Le premier processus conserve
 le mutex pendant toute sa vie. Un deuxième lancement, dans la même session Windows,
-affiche uniquement **« MagicScan est déjà en cours d’exécution. »**, puis quitte
-sans initialiser le scanner ni ajouter d'icône dans le systray. Le mutex est libéré
+quitte **silencieusement, sans boîte de dialogue**, sans initialiser le scanner ni ajouter d'icône dans le systray. Le mutex est libéré
 lorsque la première instance s'arrête. Le CLI `magicscan.exe` reste indépendant.
 
 Test : lancer le tray, tenter un second lancement, vérifier un seul systray et

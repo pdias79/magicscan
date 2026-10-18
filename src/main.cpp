@@ -1,7 +1,7 @@
 #include "usb/probe.hpp"
 #include "usb/capture.hpp"
 #include "gui/preview.hpp"
-#include "monitor/monitor.hpp"
+#include "core/monitor.hpp"
 #include <windows.h>
 #include <iostream>
 #include <string>

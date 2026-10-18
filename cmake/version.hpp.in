@@ -1,0 +1,3 @@
+#pragma once
+#define MAGICSCAN_VERSION L"@PROJECT_VERSION@"
+#define MAGICSCAN_GITHUB L"https://github.com/pdias79/magicscan"

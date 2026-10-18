@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -83,15 +84,28 @@ void start_worker() {
         events.on_complete = [](const std::wstring& file) {
             magicscan::live_preview_complete(file);
         };
-        // Prefer the privileged acquisition service when available. A failed
-        // connection falls back to the established direct capture path.
-        const int remote = magicscan::service::monitor_remote(
+        // Preserve the legacy direct path only if the service was absent at
+        // startup. Once a service session succeeds, never silently switch to
+        // direct PhysicalDrive access (which fails for standard users).
+        int remote = magicscan::service::monitor_remote(
             app.scans, app.settings.auto_save, &app.stop, &events);
-        const int code = remote >= 0 || app.stop ? (remote > 0 ? 1 : 0)
-            : magicscan::monitor_scans(app.scans, false, &app.stop, &events,
-                                      app.settings.auto_save);
-        if (!app.stop && code != 0)
-            PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
+        if (remote == -1 && !app.stop) {
+            const int code = magicscan::monitor_scans(
+                app.scans, false, &app.stop, &events, app.settings.auto_save);
+            if (!app.stop && code != 0)
+                PostMessageW(app.window, kWorkerEnded, static_cast<WPARAM>(code), 0);
+            return;
+        }
+        while (!app.stop && remote != 0) {
+            // An interrupted scan is discarded by the stream client. Keep
+            // monitoring and reconnect when the service starts again.
+            events.on_disconnected();
+            for (int i = 0; i < 10 && !app.stop; ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (app.stop) break;
+            remote = magicscan::service::monitor_remote(
+                app.scans, app.settings.auto_save, &app.stop, &events);
+        }
     });
 }
 void menu(HWND hwnd) {

@@ -46,6 +46,7 @@ add_executable(magicscan-tray WIN32
     ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/gui/about.cpp
     src/gui/preferences.cpp
+    src/core/settings.cpp
     src/gui/live_preview.cpp
     src/gui/clipboard.cpp
     src/core/monitor.cpp

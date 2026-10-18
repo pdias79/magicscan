@@ -28,6 +28,7 @@ configure_file(cmake/version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/version.hpp" @O
 
 
 add_executable(magicscan
+    ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
     src/main.cpp
     src/usb/probe.cpp
     src/usb/diagnostics.cpp
@@ -54,7 +55,7 @@ target_include_directories(magicscan-tray PRIVATE src ${CMAKE_CURRENT_BINARY_DIR
 target_compile_definitions(magicscan-tray PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_link_libraries(magicscan-tray PRIVATE gdiplus gdi32 user32 shell32 comdlg32)
 if(MSVC)
-    target_compile_options(magicscan-tray PRIVATE /W4 /permissive-)
+    target_compile_options(magicscan-tray PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(magicscan-tray PRIVATE -Wall -Wextra -Wpedantic)
 endif()
@@ -62,7 +63,7 @@ target_include_directories(magicscan PRIVATE src)
 target_compile_definitions(magicscan PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(magicscan PRIVATE setupapi gdiplus comdlg32 gdi32 user32)
 if(MSVC)
-    target_compile_options(magicscan PRIVATE /W4 /permissive-)
+    target_compile_options(magicscan PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(magicscan PRIVATE -Wall -Wextra -Wpedantic)
 endif()

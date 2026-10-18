@@ -53,6 +53,7 @@ add_executable(magicscan-tray WIN32
     src/gui/preferences.cpp
     src/core/settings.cpp
     src/gui/live_preview.cpp
+    src/gui/export_formats.cpp
     src/gui/clipboard.cpp
     src/core/monitor.cpp
     src/core/image_writer.cpp

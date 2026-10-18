@@ -61,7 +61,10 @@ void rebuild_corrected() {
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
-constexpr int kToolbarHeight = 194;
+constexpr int kCollapsedToolbarHeight = 90;
+constexpr int kExpandedToolbarHeight = 244;
+bool adjustments_visible = false;
+int toolbar_height() { return adjustments_visible ? kExpandedToolbarHeight : kCollapsedToolbarHeight; }
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -81,13 +84,13 @@ RECT selected_rect() {
 void fit_view(HWND hwnd) {
     if (!image_width || !image_height) return;
     RECT client{}; GetClientRect(hwnd,&client);
-    const int w=client.right-client.left, h=client.bottom-client.top-kToolbarHeight;
+    const int w=client.right-client.left, h=client.bottom-client.top-toolbar_height();
     if (w<=0 || h<=0) return;
     editor.zoom=std::min(static_cast<double>(w-24)/image_width,
                          static_cast<double>(h-24)/image_height);
     editor.zoom=std::clamp(editor.zoom,0.02,15.0);
     editor.ox=(w-image_width*editor.zoom)/2;
-    editor.oy=kToolbarHeight+(h-image_height*editor.zoom)/2;
+    editor.oy=toolbar_height()+(h-image_height*editor.zoom)/2;
 }
 void zoom_at(POINT p,double factor) {
     const double previous=editor.zoom;
@@ -103,7 +106,7 @@ constexpr int kButtonWidth = 92;
 constexpr int kButtonHeight = 76;
 constexpr int kToolbarLeft = 12;
 constexpr int kToolbarGap = 8;
-enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate };
+enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
 struct Tool {
     Command command;
     const wchar_t* glyph;
@@ -117,6 +120,7 @@ constexpr Tool kTools[] = {
     {Command::ZoomIn, L"\uE8A3", L"Zoom +"},
     {Command::ZoomOut, L"\uE71F", L"Zoom -"},
     {Command::Rotate, L"\uE7AD", L"Tourner"},
+    {Command::Adjustments, L"\uE713", L"Réglages"},
 };
 int hovered_tool = -1;
 int pressed_tool = -1;
@@ -128,15 +132,32 @@ int tool_at(POINT p) {
     }
     return -1;
 }
+void layout_adjustment_sliders(HWND hwnd) {
+    if (!hwnd) return;
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    const int available=std::max(120,rc.right-270);
+    HWND sliders[]={gamma_slider,brightness_slider,contrast_slider};
+    for (int row=0;row<3;++row) {
+        if (!sliders[row]) continue;
+        MoveWindow(sliders[row],240,102+row*46,available,33,TRUE);
+        ShowWindow(sliders[row],adjustments_visible?SW_SHOW:SW_HIDE);
+    }
+}
+void toggle_adjustments(HWND hwnd) {
+    adjustments_visible=!adjustments_visible;
+    layout_adjustment_sliders(hwnd);
+    if (editor.auto_fit) fit_view(hwnd);
+    InvalidateRect(hwnd,nullptr,FALSE);
+}
 void draw_toolbar(HDC dc, int width) {
-    RECT background{0,0,width,kToolbarHeight};
+    RECT background{0,0,width,toolbar_height()};
     HBRUSH bar=CreateSolidBrush(RGB(238,241,246));
     FillRect(dc,&background,bar);
     DeleteObject(bar);
     HPEN separator=CreatePen(PS_SOLID,1,RGB(203,210,220));
     HGDIOBJ previous=SelectObject(dc,separator);
-    MoveToEx(dc,0,kToolbarHeight-1,nullptr);
-    LineTo(dc,width,kToolbarHeight-1);
+    MoveToEx(dc,0,toolbar_height()-1,nullptr);
+    LineTo(dc,width,toolbar_height()-1);
     SelectObject(dc,previous);
     DeleteObject(separator);
 
@@ -176,26 +197,28 @@ void draw_toolbar(HDC dc, int width) {
     }
     if (icon_font) DeleteObject(icon_font);
     if (label_font) DeleteObject(label_font);
-    SetTextColor(dc,RGB(31,43,56));
-    HFONT gamma_font=CreateFontW(-18,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
-        DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
-        DEFAULT_PITCH,L"Segoe UI");
-    HGDIOBJ previous_font=gamma_font?SelectObject(dc,gamma_font):nullptr;
-    wchar_t gamma_label[80]{};
-    swprintf_s(gamma_label,L"Correction gamma : %.2f",gamma_position/100.0);
-    RECT label_rect{16,94,std::min(width,330),130};
-    DrawTextW(dc,gamma_label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
-    if (previous_font) SelectObject(dc,previous_font);
-    if (gamma_font) DeleteObject(gamma_font);
-    wchar_t light_label[80]{};
-    swprintf_s(light_label,L"Luminosité : %d",brightness);
-    RECT light_rect{16,140,std::min(width,270),174};
-    DrawTextW(dc,light_label,-1,&light_rect,DT_SINGLELINE|DT_VCENTER);
-    wchar_t contrast_label[80]{};
-    swprintf_s(contrast_label,L"Contraste : %d %%",contrast);
-    RECT contrast_rect{370,140,std::min(width,640),174};
-    DrawTextW(dc,contrast_label,-1,&contrast_rect,DT_SINGLELINE|DT_VCENTER);
-
+    if (adjustments_visible) {
+        HBRUSH panel=CreateSolidBrush(RGB(238,241,246));
+        RECT area{0,kCollapsedToolbarHeight,width,toolbar_height()-1};
+        FillRect(dc,&area,panel);
+        DeleteObject(panel);
+        HFONT font=CreateFontW(-17,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+            DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+            DEFAULT_PITCH,L"Segoe UI");
+        HGDIOBJ previous_font=font?SelectObject(dc,font):nullptr;
+        SetTextColor(dc,RGB(31,43,56));
+        wchar_t label[96]{};
+        const wchar_t* captions[]={L"Gamma",L"Luminosité",L"Contraste"};
+        for (int row=0; row<3; ++row) {
+            if (row==0) swprintf_s(label,L"%s : %.2f",captions[row],gamma_position/100.0);
+            if (row==1) swprintf_s(label,L"%s : %d",captions[row],brightness);
+            if (row==2) swprintf_s(label,L"%s : %d %%",captions[row],contrast);
+            RECT label_rect{24,99+row*46,236,139+row*46};
+            DrawTextW(dc,label,-1,&label_rect,DT_SINGLELINE|DT_VCENTER);
+        }
+        if (previous_font) SelectObject(dc,previous_font);
+        if (font) DeleteObject(font);
+    }
 
 }
 
@@ -312,6 +335,9 @@ void run_tool(HWND hwnd, Command command) {
         fit_view(hwnd);
         InvalidateRect(hwnd,nullptr,FALSE);
         break;
+    case Command::Adjustments:
+        toggle_adjustments(hwnd);
+        break;
     case Command::Rotate: {
         if (!completed || accumulated.empty()) break;
         const uint32_t old_width=image_width, old_height=image_height;
@@ -335,7 +361,7 @@ void run_tool(HWND hwnd, Command command) {
     case Command::ZoomIn:
     case Command::ZoomOut: {
         RECT rc{}; GetClientRect(hwnd,&rc);
-        POINT center{(rc.left+rc.right)/2,(kToolbarHeight+rc.bottom)/2};
+        POINT center{(rc.left+rc.right)/2,(toolbar_height()+rc.bottom)/2};
         zoom_at(center,command==Command::ZoomIn?1.2:1.0/1.2);
         InvalidateRect(hwnd,nullptr,FALSE);
         break;
@@ -359,7 +385,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HDC dc = old_bitmap ? buffer_dc : screen_dc;
         FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
         const int saved_clip=SaveDC(dc);
-        IntersectClipRect(dc,0,kToolbarHeight,paint_width,paint_height);
+        IntersectClipRect(dc,0,toolbar_height(),paint_width,paint_height);
         if (image_width && image_height && !accumulated.empty()) {
             if (editor.auto_fit) fit_view(hwnd);
             BITMAPINFO info{};
@@ -406,6 +432,15 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
+    case WM_SIZE:
+        layout_adjustment_sliders(hwnd);
+        InvalidateRect(hwnd,nullptr,FALSE);
+        // During interactive resize, paint immediately rather than waiting for mouse release.
+        UpdateWindow(hwnd);
+        return 0;
+    case WM_SIZING:
+        RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_UPDATENOW|RDW_NOERASE);
+        break;
     case WM_HSCROLL: {
         HWND scrolled=reinterpret_cast<HWND>(lp);
         if (scrolled==gamma_slider || scrolled==brightness_slider || scrolled==contrast_slider) {
@@ -421,7 +456,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_LBUTTONDOWN: {
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
-        if (p.y<kToolbarHeight) {
+        if (p.y<toolbar_height()) {
             pressed_tool=tool_at(p);
             if (pressed_tool>=0) { SetCapture(hwnd); InvalidateRect(hwnd,nullptr,FALSE); }
             return 0;
@@ -497,7 +532,7 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const bool ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0;
         if (ctrl) {
             if (wp=='C' && !copy_selected(hwnd))
-                MessageBoxW(hwnd,L"Could not copy the selection.",L"MagicScan",MB_ICONWARNING);
+                MessageBoxW(hwnd,L"Impossible de copier la sélection.",L"MagicScan",MB_ICONWARNING);
             if (wp=='S') save_selected(hwnd);
             if (wp=='A') { editor.selected=false; InvalidateRect(hwnd,nullptr,FALSE); }
             return 0;
@@ -551,8 +586,8 @@ void ensure_window() {
         INITCOMMONCONTROLSEX controls{sizeof(INITCOMMONCONTROLSEX),ICC_BAR_CLASSES};
         InitCommonControlsEx(&controls);
         gamma_slider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
-            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
-            330,98,310,36,preview,
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,102,400,33,preview,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kGammaSliderId)),
             GetModuleHandleW(nullptr),nullptr);
         if (gamma_slider) {
@@ -560,8 +595,8 @@ void ensure_window() {
             SendMessageW(gamma_slider,TBM_SETPOS,TRUE,gamma_position);
         }
         brightness_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
-            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
-            160,143,190,35,preview,
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,148,400,33,preview,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBrightnessId)),
             GetModuleHandleW(nullptr),nullptr);
         if (brightness_slider) {
@@ -569,14 +604,15 @@ void ensure_window() {
             SendMessageW(brightness_slider,TBM_SETPOS,TRUE,brightness);
         }
         contrast_slider=CreateWindowExW(0,TRACKBAR_CLASSW,L"",
-            WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
-            510,143,190,35,preview,
+            WS_CHILD|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+            240,194,400,33,preview,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kContrastId)),
             GetModuleHandleW(nullptr),nullptr);
         if (contrast_slider) {
             SendMessageW(contrast_slider,TBM_SETRANGE,TRUE,MAKELPARAM(50,150));
             SendMessageW(contrast_slider,TBM_SETPOS,TRUE,contrast);
         }
+        layout_adjustment_sliders(preview);
         HINSTANCE instance = GetModuleHandleW(nullptr);
         HICON large = static_cast<HICON>(LoadImageW(instance,
             MAKEINTRESOURCEW(IDI_MAGICSCAN), IMAGE_ICON, 32, 32, LR_SHARED));

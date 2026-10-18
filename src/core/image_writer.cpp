@@ -1,5 +1,6 @@
 #include "image_writer.hpp"
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 #include <algorithm>
 #include <cstddef>

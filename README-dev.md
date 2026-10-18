@@ -286,3 +286,46 @@ lorsque la première instance s'arrête. Le CLI `magicscan.exe` reste indépenda
 Test : lancer le tray, tenter un second lancement, vérifier un seul systray et
 un seul processus actif, quitter la première instance puis relancer normalement.
 Répéter avec deux lancements rapprochés.
+
+## PR #13 — Distribution Windows portable (version 0.4.0)
+
+Le processus de build produit une archive `MagicScan-0.4.0-win64.zip` contenant
+`magicscan-tray.exe`, `magicscan.exe` et un `LISEZ-MOI.md` en français.
+Une vérification de l'archive extraite est exécutée dans GitHub Actions avant
+le dépôt de l'artefact CI. L'archive portable ne nécessite pas d'installation.
+
+### Construction locale sous Windows
+
+```powershell
+cmake -S . -B build -A x64
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-windows.ps1 -BuildDir build -OutputDir dist
+```
+
+La commande démarre une nouvelle session PowerShell avec une dérogation temporaire de politique d'exécution pour le seul processus de packaging. Elle ne modifie pas durablement les paramètres de sécurité PowerShell. Si une politique d'entreprise impose des restrictions supplémentaires, contacter l'administrateur plutôt que modifier la stratégie système.
+
+L'archive générée se trouve sous `dist/MagicScan-0.4.0-win64.zip`.
+Extrayez-la entièrement avant de lancer `magicscan-tray.exe`. Les droits
+administrateur restent nécessaires pour accéder au scanner sur le PC testé ;
+voir `docs/WINDOWS-PORTABLE.md`. Aucun pilote ni ACL Windows n'est modifié.
+
+### Publication de version (après validation matérielle et fusion de la PR)
+
+Le workflow `.github/workflows/release.yml` **ne s'exécute pas automatiquement**
+lors du merge. Il démarre à la création et au push d'un tag `vX.Y.Z`, vérifie
+que celui-ci correspond à la version de `CMakeLists.txt`, compile et teste,
+puis publie sur GitHub Releases le ZIP portable avec des notes de version
+générées automatiquement.
+
+```powershell
+git switch main
+git pull origin main
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+Créer le tag **uniquement après** avoir validé le ZIP sur Windows et vérifié
+qu'il n'existe pas déjà. Ne pas créer de release en avance : sa publication
+est déclenchée par le tag. Les archives ne sont pas signées numériquement ;
+aucune prise en charge SmartScreen ou installation en arrière-plan n'est promise.

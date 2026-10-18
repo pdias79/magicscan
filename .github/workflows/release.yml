@@ -1,0 +1,49 @@
+name: Publish Windows Release
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches CMake version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\(magicscan VERSION (\d+\.\d+\.\d+)') { throw "Version CMake introuvable" }
+          if ($tag -ne "v$($Matches[1])") { throw "Le tag $tag ne correspond pas a la version CMake $($Matches[1])" }
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Package Windows portable ZIP
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          ./scripts/package-windows.ps1 -BuildDir build -OutputDir dist -Version $version
+      - name: Verify archive
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          $archive = "dist/MagicScan-$version-win64.zip"
+          if (-not (Test-Path $archive)) { throw "Archive absente" }
+          Expand-Archive -LiteralPath $archive -DestinationPath verify
+          foreach ($item in @("magicscan-tray.exe", "magicscan.exe", "LISEZ-MOI.md")) {
+            if (-not (Test-Path "verify/MagicScan-$version-win64/$item")) { throw "Fichier manquant : $item" }
+          }
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          gh release create "${{ github.ref_name }}" "dist/MagicScan-$version-win64.zip" --verify-tag --title "MagicScan ${{ github.ref_name }}" --generate-notes

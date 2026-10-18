@@ -14,8 +14,20 @@ jobs:
         run: cmake --build build --config Release
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: Package exe
+      - name: Package Windows portable ZIP
+        shell: pwsh
+        run: |
+          ./scripts/package-windows.ps1 -BuildDir build -OutputDir dist
+          $archive = Get-ChildItem dist/MagicScan-*-win64.zip | Select-Object -First 1
+          if (-not $archive) { throw "Archive ZIP absente" }
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath verify -Force
+          $folder = Get-ChildItem verify -Directory | Select-Object -First 1
+          foreach ($file in @("magicscan-tray.exe", "magicscan.exe", "LISEZ-MOI.md")) {
+            if (-not (Test-Path (Join-Path $folder.FullName $file))) { throw "Fichier manquant : $file" }
+          }
+      - name: Upload Windows portable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: magicscan-win64-preview
-          path: build/Release/magicscan.exe
+          name: magicscan-win64-portable
+          path: dist/MagicScan-*-win64.zip
+          if-no-files-found: error

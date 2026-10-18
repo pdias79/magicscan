@@ -76,3 +76,59 @@ aucun pilote ni paramètre USB.
    promettre une utilisation sans élévation ou de créer une release.
 
 **Ne pas installer ce prototype sur une machine sans pouvoir le désinstaller.**
+
+
+## Phase 2 expérimentale — Acquisition via le service
+
+La validation du diagnostic `--service-status` a été obtenue dans un **véritable
+compte Windows standard**. Cette branche expérimente maintenant la transmission
+des bandes BGR par un **deuxième pipe local sortant**, avec taille de bande
+fixe (2592 × 192 × 3), messages bornés, limites mémoire de 256 Mio et sans
+commande arbitraire côté utilisateur. Les commandes SCSI en lecture seule
+continuent d'être exécutées uniquement par le service. Le processus systray
+reçoit les bandes, construit l'aperçu et écrit les PNG dans le profil utilisateur.
+
+**Attention :** cette phase n'a pas encore été validée sur le matériel réel.
+Conservez la version publiée 0.4.0 comme solution de secours.
+
+### Mettre à jour le service de test
+
+Depuis PowerShell **administrateur**, après avoir fermé MagicScan :
+
+```powershell
+cd "C:\Users\Philou\Documents\repos\magicscan"
+git fetch origin
+git switch feature/standard-user-service-foundation
+git pull origin feature/standard-user-service-foundation
+cmake -S . -B build -A x64
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall-service.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+sc.exe query MagicScanUsb
+.\build\Release\magicscan.exe --service-status
+```
+
+La désinstallation/réinstallation est **indispensable** pour remplacer le binaire
+du service, initialement installé dans `Program Files`. Ne pas laisser le service
+sous LocalSystem exécuter une copie située dans le dépôt de développement.
+
+### Essai sous compte Windows standard
+
+L'utilisateur standard doit avoir une copie des fichiers compilés à laquelle
+il peut accéder sans droits administrateur. Il lance `magicscan-tray.exe`
+**sans élévation** depuis ce compte, scanner branché, puis vérifie :
+
+1. L'icône systray indique la connexion du scanner ;
+2. Le bouton physique SCAN démarre l'aperçu et envoie des bandes ;
+3. Un deuxième appui finit le scan, le PNG se trouve dans **son propre dossier** ;
+4. Le presse-papiers et les réglages fonctionnent depuis sa session ;
+5. Mettre en pause/reprendre et débrancher/rebrancher ne fige pas l'application ;
+6. Le service restant actif, `sc.exe query MagicScanUsb` répond RUNNING.
+
+Le service reste en **démarrage manuel** pour ces essais. Après redémarrage du
+PC, il devra être lancé par l'administrateur. Aucun ACL de disque ni pilote
+n'est modifié. En cas de régression, quitter le systray expérimental et
+désinstaller le service avec `uninstall-service.ps1`, puis utiliser la release
+0.4.0 en admin. **Ne pas soumettre cette PR avant validation d'un scan complet.**

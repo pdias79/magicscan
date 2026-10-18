@@ -37,4 +37,4 @@ Name: "{commonstartup}\MagicScan"; Filename: "{app}\{#MyAppExeName}"
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\Installer\manage-service.ps1"" -Action Install -ServiceExe ""{app}\Service\magicscan-usb-service.exe"""; Flags: runhidden waituntilterminated
 
 [UninstallRun]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\Installer\manage-service.ps1"" -Action Uninstall"; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\Installer\manage-service.ps1"" -Action Uninstall"; RunOnceId: "MagicScanUsbServiceRemoval"; Flags: runhidden waituntilterminated

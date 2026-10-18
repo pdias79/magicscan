@@ -110,3 +110,11 @@ cmake --build build --config Release
 ```
 
 Scan a page; confirm the display grows during the scan. Draw a rectangle over the finished image; press Ctrl+C and paste into Paint, and press Ctrl+S to save a cropped PNG. Zoom/pan and scan again without closing the window. The Windows clipboard is still updated with each new full-page scan as previously established.
+
+### Live preview refinement
+
+- **Escape** cancels the active rectangular selection. Ctrl+C/Ctrl+S then target the complete image.
+- The rectangle is anchored in **image pixel coordinates**. Wheel/+/- zoom and right-drag pan transform the displayed outline without changing the selected pixel region.
+- The live window draws each frame to an off-screen GDI bitmap and blits once to suppress selection/pan flicker.
+
+Test with a scan: select a distinctive small area, zoom several times, pan, then copy it to Paint; copied pixels and PNG dimensions must remain unchanged. Press Escape and copy again; the full page should be used.

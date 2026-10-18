@@ -6,7 +6,7 @@ identifier le scanner en contexte privilégié et transmettre **un état fixe**
 l'application systray conserve son accès USB direct jusqu'à une phase ultérieure.
 
 Le service `MagicScanUsb` est installé manuellement par un administrateur,
-en compte LocalSystem et en démarrage **manuel**. Il n'accepte aucun chemin,
+en compte LocalSystem et en démarrage **manuel**. Le script copie l'exécutable\ndans un dossier protégé sous `%ProgramFiles%\\MagicScan\\Service` ; le service\nne doit jamais être enregistré depuis le dépôt de développement. Il n'accepte aucun chemin,
 aucun paramètre et aucune commande SCSI depuis l'utilisateur. Sa seule réponse
 est un octet : scanner identifié par SCSI NOVA, ou indisponible.
 

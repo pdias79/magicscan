@@ -1,13 +1,23 @@
 #pragma once
 #include <string>
 #include <atomic>
+#include <cstdint>
+#include <functional>
+#include <vector>
 namespace magicscan {
 // Experimental: wait for a new image band and save its RGB pixels to PNG.
 // No vendor OUT commands or writes to scanner storage.
 // Experimental multi-strip acquisition: scan button starts/stops a session.
 // Saves assembled PNG only after draining pending strips.
+// Scanner events carry decoded BGR scanlines, never Win32 GUI objects.
+struct ScanEvents {
+    std::function<void()> on_start;
+    std::function<void(const std::vector<uint8_t>&, uint32_t, uint32_t)> on_band;
+    std::function<void(const std::wstring&)> on_complete;
+};
 bool capture_page(const std::wstring& output_png, std::string& error,
                   bool wait_for_start_forever = false,
-                  const std::atomic_bool* stop = nullptr);
+                  const std::atomic_bool* stop = nullptr,
+                  const ScanEvents* events = nullptr);
 bool capture_first_band(const std::wstring& output_png, std::string& error);
 }

@@ -27,7 +27,9 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Package Windows portable ZIP
         shell: pwsh
-        run: ./scripts/package-windows.ps1 -BuildDir build -OutputDir dist -Version "${{ github.ref_name }}".Substring(1)
+        run: |
+          $version = "${{ github.ref_name }}".Substring(1)
+          ./scripts/package-windows.ps1 -BuildDir build -OutputDir dist -Version $version
       - name: Verify archive
         shell: pwsh
         run: |

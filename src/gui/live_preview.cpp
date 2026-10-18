@@ -30,6 +30,7 @@ std::vector<uint8_t> accumulated;
 uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
+constexpr int kToolbarHeight = 90;
 struct Editor {
     double zoom = 1.0, ox = 20.0, oy = 20.0;
     POINT begin{}, end{}, last{};
@@ -49,13 +50,13 @@ RECT selected_rect() {
 void fit_view(HWND hwnd) {
     if (!image_width || !image_height) return;
     RECT client{}; GetClientRect(hwnd,&client);
-    const int w=client.right-client.left, h=client.bottom-client.top;
+    const int w=client.right-client.left, h=client.bottom-client.top-kToolbarHeight;
     if (w<=0 || h<=0) return;
     editor.zoom=std::min(static_cast<double>(w-24)/image_width,
                          static_cast<double>(h-24)/image_height);
     editor.zoom=std::clamp(editor.zoom,0.02,15.0);
     editor.ox=(w-image_width*editor.zoom)/2;
-    editor.oy=(h-image_height*editor.zoom)/2;
+    editor.oy=kToolbarHeight+(h-image_height*editor.zoom)/2;
 }
 void zoom_at(POINT p,double factor) {
     const double previous=editor.zoom;
@@ -66,6 +67,85 @@ void zoom_at(POINT p,double factor) {
 }
 
 std::wstring saved_path;
+
+constexpr int kButtonWidth = 92;
+constexpr int kButtonHeight = 76;
+constexpr int kToolbarLeft = 12;
+constexpr int kToolbarGap = 8;
+enum class Command { Copy, Save, Clear, Fit, ZoomIn, ZoomOut };
+struct Tool {
+    Command command;
+    const wchar_t* glyph;
+    const wchar_t* label;
+};
+constexpr Tool kTools[] = {
+    {Command::Copy, L"\uE8C8", L"Copy"},
+    {Command::Save, L"\uE74E", L"Save"},
+    {Command::Clear, L"\uE711", L"Clear"},
+    {Command::Fit, L"\uE9A6", L"Fit"},
+    {Command::ZoomIn, L"\uE8A3", L"Zoom +"},
+    {Command::ZoomOut, L"\uE71F", L"Zoom -"},
+};
+int hovered_tool = -1;
+int pressed_tool = -1;
+int tool_at(POINT p) {
+    if (p.y < 7 || p.y >= 7+kButtonHeight) return -1;
+    for (int i=0;i<static_cast<int>(sizeof(kTools)/sizeof(kTools[0]));++i) {
+        const int x=kToolbarLeft+i*(kButtonWidth+kToolbarGap);
+        if (p.x>=x && p.x<x+kButtonWidth) return i;
+    }
+    return -1;
+}
+void draw_toolbar(HDC dc, int width) {
+    RECT background{0,0,width,kToolbarHeight};
+    HBRUSH bar=CreateSolidBrush(RGB(238,241,246));
+    FillRect(dc,&background,bar);
+    DeleteObject(bar);
+    HPEN separator=CreatePen(PS_SOLID,1,RGB(203,210,220));
+    HGDIOBJ previous=SelectObject(dc,separator);
+    MoveToEx(dc,0,kToolbarHeight-1,nullptr);
+    LineTo(dc,width,kToolbarHeight-1);
+    SelectObject(dc,previous);
+    DeleteObject(separator);
+
+    HFONT icon_font=CreateFontW(-31,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
+        DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH,L"Segoe MDL2 Assets");
+    HFONT label_font=CreateFontW(-16,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+        DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH,L"Segoe UI");
+    SetBkMode(dc,TRANSPARENT);
+    for (int i=0;i<static_cast<int>(sizeof(kTools)/sizeof(kTools[0]));++i) {
+        const int x=kToolbarLeft+i*(kButtonWidth+kToolbarGap);
+        RECT button{x,7,x+kButtonWidth,7+kButtonHeight};
+        HBRUSH fill=CreateSolidBrush(i==pressed_tool?RGB(193,216,245):
+            i==hovered_tool?RGB(217,232,250):RGB(255,255,255));
+        HPEN border=CreatePen(PS_SOLID,1,RGB(193,202,214));
+        HGDIOBJ old_brush=SelectObject(dc,fill);
+        HGDIOBJ old_pen=SelectObject(dc,border);
+        RoundRect(dc,button.left,button.top,button.right,button.bottom,12,12);
+        SelectObject(dc,old_pen);
+        SelectObject(dc,old_brush);
+        DeleteObject(border); DeleteObject(fill);
+        if (icon_font) {
+            HGDIOBJ old_font=SelectObject(dc,icon_font);
+            RECT glyph{x+2,12,x+kButtonWidth-2,49};
+            SetTextColor(dc,RGB(35,88,147));
+            DrawTextW(dc,kTools[i].glyph,-1,&glyph,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            SelectObject(dc,old_font);
+        }
+        if (label_font) {
+            HGDIOBJ old_font=SelectObject(dc,label_font);
+            RECT label{x+2,54,x+kButtonWidth-2,79};
+            SetTextColor(dc,RGB(31,43,56));
+            DrawTextW(dc,kTools[i].label,-1,&label,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            SelectObject(dc,old_font);
+        }
+    }
+    if (icon_font) DeleteObject(icon_font);
+    if (label_font) DeleteObject(label_font);
+}
+
 
 bool encode_png(const std::wstring& filename, const std::vector<uint8_t>& bgr,
                 int width, int height) {
@@ -161,6 +241,34 @@ void save_selected(HWND hwnd) {
     if (GetSaveFileNameW(&dialog) && !encode_png(file,pixels,w,h))
         MessageBoxW(hwnd,L"Unable to save the selected PNG.",L"MagicScan",MB_ICONERROR);
 }
+
+void run_tool(HWND hwnd, Command command) {
+    switch (command) {
+    case Command::Copy:
+        if (!copy_selected(hwnd))
+            MessageBoxW(hwnd,L"Could not copy the selection.",L"MagicScan",MB_ICONWARNING);
+        break;
+    case Command::Save: save_selected(hwnd); break;
+    case Command::Clear:
+        editor.selected=false;
+        editor.selecting=false;
+        InvalidateRect(hwnd,nullptr,FALSE);
+        break;
+    case Command::Fit:
+        editor.auto_fit=true;
+        fit_view(hwnd);
+        InvalidateRect(hwnd,nullptr,FALSE);
+        break;
+    case Command::ZoomIn:
+    case Command::ZoomOut: {
+        RECT rc{}; GetClientRect(hwnd,&rc);
+        POINT center{(rc.left+rc.right)/2,(kToolbarHeight+rc.bottom)/2};
+        zoom_at(center,command==Command::ZoomIn?1.2:1.0/1.2);
+        InvalidateRect(hwnd,nullptr,FALSE);
+        break;
+    }
+    }
+}
 LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: {
@@ -177,6 +285,8 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HGDIOBJ old_bitmap = backing_bitmap ? SelectObject(buffer_dc,backing_bitmap) : nullptr;
         HDC dc = old_bitmap ? buffer_dc : screen_dc;
         FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+        const int saved_clip=SaveDC(dc);
+        IntersectClipRect(dc,0,kToolbarHeight,paint_width,paint_height);
         if (image_width && image_height && !accumulated.empty()) {
             if (editor.auto_fit) fit_view(hwnd);
             BITMAPINFO info{};
@@ -211,6 +321,8 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DrawTextW(dc, L"Waiting for scan bands...", -1, &client,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
+        RestoreDC(dc,saved_clip);
+        draw_toolbar(dc,paint_width);
         if (old_bitmap) {
             BitBlt(screen_dc,0,0,paint_width,paint_height,buffer_dc,0,0,SRCCOPY);
             SelectObject(buffer_dc,old_bitmap);
@@ -221,39 +333,65 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_ERASEBKGND: return 1;
-    case WM_LBUTTONDOWN:
+    case WM_LBUTTONDOWN: {
+        POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+        if (p.y<kToolbarHeight) {
+            pressed_tool=tool_at(p);
+            if (pressed_tool>=0) { SetCapture(hwnd); InvalidateRect(hwnd,nullptr,FALSE); }
+            return 0;
+        }
         SetFocus(hwnd);
         editor.begin=editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
         editor.selecting=true; editor.selected=false;
         SetCapture(hwnd);
         return 0;
+    }
     case WM_RBUTTONDOWN:
         SetFocus(hwnd);
         editor.last={GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
         editor.panning=true;
         SetCapture(hwnd);
         return 0;
-    case WM_MOUSEMOVE:
+    case WM_MOUSEMOVE: {
+        POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+        int hover=tool_at(p);
+        if (hover!=hovered_tool) { hovered_tool=hover; InvalidateRect(hwnd,nullptr,FALSE); }
         if (editor.selecting) {
             editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
             InvalidateRect(hwnd,nullptr,FALSE);
         }
         if (editor.panning) {
-            POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
             editor.ox+=p.x-editor.last.x; editor.oy+=p.y-editor.last.y;
             editor.last=p; editor.auto_fit=false;
             InvalidateRect(hwnd,nullptr,FALSE);
         }
         return 0;
-    case WM_LBUTTONUP:
+    }
+    case WM_LBUTTONUP: {
+        POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+        if (pressed_tool>=0) {
+            int clicked=pressed_tool;
+            pressed_tool=-1;
+            if (GetCapture()==hwnd) ReleaseCapture();
+            InvalidateRect(hwnd,nullptr,FALSE);
+            if (tool_at(p)==clicked) run_tool(hwnd,kTools[clicked].command);
+            return 0;
+        }
         if (editor.selecting) {
             editor.end={image_x(GET_X_LPARAM(lp)),image_y(GET_Y_LPARAM(lp))};
             editor.selecting=false; editor.selected=true;
             ReleaseCapture(); InvalidateRect(hwnd,nullptr,FALSE);
         }
         return 0;
+    }
     case WM_RBUTTONUP:
         if (editor.panning) { editor.panning=false; ReleaseCapture(); }
+        return 0;
+    case WM_CAPTURECHANGED:
+        pressed_tool=-1;
+        editor.selecting=false;
+        editor.panning=false;
+        InvalidateRect(hwnd,nullptr,FALSE);
         return 0;
     case WM_MOUSEWHEEL: {
         POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
@@ -362,6 +500,8 @@ void live_preview_dispatch(UINT message) {
             completed=false;
             saved_path.clear();
             editor=Editor{};
+            hovered_tool=-1;
+            pressed_tool=-1;
             ensure_window();
             if (preview) SetWindowTextW(preview,L"MagicScan - scanning...");
             break;

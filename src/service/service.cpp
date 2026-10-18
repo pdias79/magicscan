@@ -2,6 +2,8 @@
 #include "../usb/probe.hpp"
 #include <windows.h>
 #include <sddl.h>
+#include <thread>
+namespace magicscan::service { void run_stream(HANDLE stop_event); }
 
 namespace {
 SERVICE_STATUS_HANDLE status_handle = nullptr;
@@ -89,7 +91,9 @@ void WINAPI main_service(DWORD, LPWSTR*) {
     stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     if (!stop_event) { report(SERVICE_STOPPED, GetLastError()); return; }
     report(SERVICE_RUNNING);
+    std::thread stream_worker([&] { magicscan::service::run_stream(stop_event); });
     serve();
+    stream_worker.join();
     CloseHandle(stop_event);
     stop_event = nullptr;
     report(SERVICE_STOPPED);

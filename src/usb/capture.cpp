@@ -1,17 +1,15 @@
 #include "capture.hpp"
 #include "probe.hpp"
+#include "../core/image_writer.hpp"
 #include <windows.h>
 #include <winioctl.h>
 #include <ntddscsi.h>
-#include <objidl.h>
-#include <gdiplus.h>
 #include <algorithm>
 #include <atomic>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <cwchar>
 #include <cstddef>
 #include <limits>
 #include <memory>
@@ -71,89 +69,6 @@ bool read_scsi(HANDLE device, const std::array<uint8_t,16>& cdb,
 }
 std::array<uint8_t,16> meta(uint8_t length, uint8_t a, uint8_t b, uint8_t c = 0) {
     return {0xC5,0x07,0,0,0,0,0,0,0,length,a,b,c,0,0,0};
-}
-bool png_codec(CLSID& clsid) {
-    UINT count=0, size=0;
-    if (Gdiplus::GetImageEncodersSize(&count,&size) != Gdiplus::Ok || !size) return false;
-    std::vector<uint8_t> storage(size);
-    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(storage.data());
-    if (Gdiplus::GetImageEncoders(count,size,codecs) != Gdiplus::Ok) return false;
-    for (UINT i=0;i<count;++i) {
-        if (codecs[i].MimeType && std::wcscmp(codecs[i].MimeType,L"image/png")==0) {
-            clsid=codecs[i].Clsid; return true;
-        }
-    }
-    return false;
-}
-bool write_png(const std::wstring& file, const std::vector<uint8_t>& planar, std::string& error) {
-    Gdiplus::GdiplusStartupInput input{};
-    ULONG_PTR token=0;
-    if (Gdiplus::GdiplusStartup(&token,&input,nullptr) != Gdiplus::Ok) {
-        error="Cannot initialize GDI+"; return false;
-    }
-    bool success=false;
-    {
-        Gdiplus::Bitmap bitmap(kWidth,kLines,PixelFormat24bppRGB);
-        Gdiplus::Rect rect(0,0,kWidth,kLines);
-        Gdiplus::BitmapData bits{};
-        if (bitmap.LockBits(&rect,Gdiplus::ImageLockModeWrite,PixelFormat24bppRGB,&bits)==Gdiplus::Ok) {
-            for (uint32_t y=0;y<kLines;++y) {
-                auto* dst = static_cast<uint8_t*>(bits.Scan0) + static_cast<ptrdiff_t>(y)*bits.Stride;
-                const auto* row = planar.data() + static_cast<size_t>(y)*kWidth*3;
-                for (uint32_t x=0;x<kWidth;++x) {
-                    uint32_t source=kWidth-1-x;
-                    dst[x*3+0]=row[kWidth*2+source]; // BGR expected by GDI+
-                    dst[x*3+1]=row[kWidth+source];
-                    dst[x*3+2]=row[source];
-                }
-            }
-            bitmap.UnlockBits(&bits);
-            CLSID clsid{};
-            if (png_codec(clsid) && bitmap.Save(file.c_str(),&clsid)==Gdiplus::Ok) success=true;
-            else error="Failed to encode or save PNG";
-        } else error="GDI+ LockBits failed";
-    }
-    Gdiplus::GdiplusShutdown(token);
-    return success;
-}
-
-bool write_page_png(const std::wstring& file, const std::vector<uint8_t>& pixels,
-                    size_t bands, std::string& error) {
-    if (bands == 0 || bands > static_cast<size_t>(std::numeric_limits<INT>::max() / kLines)) {
-        error = "Invalid page height"; return false;
-    }
-    const INT height = static_cast<INT>(bands * kLines);
-    Gdiplus::GdiplusStartupInput input{};
-    ULONG_PTR token = 0;
-    if (Gdiplus::GdiplusStartup(&token, &input, nullptr) != Gdiplus::Ok) {
-        error = "Cannot initialize GDI+"; return false;
-    }
-    bool saved = false;
-    {
-        Gdiplus::Bitmap bitmap(kWidth, height, PixelFormat24bppRGB);
-        if (bitmap.GetLastStatus() != Gdiplus::Ok) {
-            error = "Unable to allocate full-page bitmap";
-        } else {
-            Gdiplus::Rect rect(0, 0, kWidth, height);
-            Gdiplus::BitmapData data{};
-            if (bitmap.LockBits(&rect, Gdiplus::ImageLockModeWrite,
-                                PixelFormat24bppRGB, &data) == Gdiplus::Ok) {
-                const size_t stride = static_cast<size_t>(kWidth) * 3;
-                for (INT y = 0; y < height; ++y) {
-                    uint8_t* destination = static_cast<uint8_t*>(data.Scan0) +
-                                           static_cast<ptrdiff_t>(y) * data.Stride;
-                    std::memcpy(destination, pixels.data() + static_cast<size_t>(y) * stride, stride);
-                }
-                bitmap.UnlockBits(&data);
-                CLSID encoder{};
-                if (png_codec(encoder) && bitmap.Save(file.c_str(), &encoder) == Gdiplus::Ok)
-                    saved = true;
-                else error = "Could not encode or save page PNG";
-            } else error = "Could not lock full-page bitmap";
-        }
-    }
-    Gdiplus::GdiplusShutdown(token);
-    return saved;
 }
 bool read_band(HANDLE device, uint32_t address, std::vector<uint8_t>& page,
                std::string& error) {

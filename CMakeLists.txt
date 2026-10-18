@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(magicscan VERSION 0.2.0 LANGUAGES CXX)
+project(magicscan VERSION 0.3.0 LANGUAGES CXX RC)
 
 if(NOT WIN32)
     message(FATAL_ERROR "MagicScan now targets Windows only (C++17 + Win32).")
@@ -7,6 +7,25 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# A checked-in text-encoded derivative of the approved scanner artwork is
+# converted to an ICO at configure time, including common small-icon sizes.
+set(MAGICSCAN_ICON_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/magicscan.ico")
+execute_process(
+    COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+        -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate-icon.ps1"
+        -Source "${CMAKE_CURRENT_SOURCE_DIR}/assets/magicscan-icon.png.b64"
+        -Output "${MAGICSCAN_ICON_OUTPUT}"
+    RESULT_VARIABLE MAGICSCAN_ICON_RESULT
+    ERROR_VARIABLE MAGICSCAN_ICON_ERROR
+)
+if(NOT MAGICSCAN_ICON_RESULT EQUAL 0)
+    message(FATAL_ERROR "Could not generate Windows icon: ${MAGICSCAN_ICON_ERROR}")
+endif()
+file(TO_CMAKE_PATH "${MAGICSCAN_ICON_OUTPUT}" MAGICSCAN_ICON_PATH)
+configure_file(cmake/magicscan.rc.in "${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc" @ONLY)
+configure_file(cmake/version.hpp.in "${CMAKE_CURRENT_BINARY_DIR}/version.hpp" @ONLY)
+
 
 add_executable(magicscan
     src/main.cpp
@@ -22,6 +41,8 @@ add_executable(magicscan
 # scanner diagnostics and capture tests without a graphical shell.
 add_executable(magicscan-tray WIN32
     src/gui/tray.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/magicscan.rc
+    src/gui/about.cpp
     src/gui/live_preview.cpp
     src/gui/clipboard.cpp
     src/core/monitor.cpp
@@ -29,7 +50,7 @@ add_executable(magicscan-tray WIN32
     src/usb/probe.cpp
     src/usb/capture.cpp
 )
-target_include_directories(magicscan-tray PRIVATE src)
+target_include_directories(magicscan-tray PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(magicscan-tray PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_link_libraries(magicscan-tray PRIVATE gdiplus gdi32 user32 shell32 comdlg32)
 if(MSVC)

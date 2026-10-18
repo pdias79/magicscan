@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <algorithm>
 #include <cstring>
+#include <malloc.h>
 #include <deque>
 #include <filesystem>
 #include <mutex>
@@ -347,6 +348,10 @@ void dismiss_preview(HWND hwnd) {
     saved_path.clear();
     editor = Editor{};
     ShowWindow(hwnd, SW_HIDE);
+    // Large scans release their vectors above. Encourage the CRT allocator to
+    // return any completely free heap pages to Windows, without discarding the
+    // independently owned clipboard image.
+    _heapmin();
 }
 void run_tool(HWND hwnd, Command command) {
     switch (command) {

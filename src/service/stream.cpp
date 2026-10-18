@@ -58,7 +58,7 @@ bool monitor_remote(const std::wstring& directory, bool auto_save,
         Header head{};
         if (!read_exact(pipe, &head, sizeof(head), stop)) { success = false; break; }
         if ((head.kind == kStart || head.kind == kFinish || head.kind == kConnected ||
-             head.kind == kFailure) && head.size != 0) { success = false; break; }
+             head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { success = false; break; }
         if (head.kind == kStart) {
             page.clear();
             if (events && events->on_start) events->on_start();

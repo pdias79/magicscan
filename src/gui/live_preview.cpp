@@ -169,7 +169,7 @@ void draw_toolbar(HDC dc, int width) {
     HFONT icon_font=CreateFontW(-31,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
         DEFAULT_PITCH,L"Segoe MDL2 Assets");
-    HFONT label_font=CreateFontW(-16,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
+    HFONT label_font=CreateFontW(-14,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
         DEFAULT_PITCH,L"Segoe UI");
     SetBkMode(dc,TRANSPARENT);
@@ -194,9 +194,12 @@ void draw_toolbar(HDC dc, int width) {
         }
         if (label_font) {
             HGDIOBJ old_font=SelectObject(dc,label_font);
-            RECT label{x+2,54,x+kButtonWidth-2,79};
+            RECT label{x+4,50,x+kButtonWidth-4,7+kButtonHeight-3};
             SetTextColor(dc,RGB(31,43,56));
-            DrawTextW(dc,kTools[i].label,-1,&label,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            const wchar_t* caption = kTools[i].command == Command::CopyClose
+                ? L"Copier et\nfermer" : kTools[i].label;
+            // Keep two short lines for the longest caption, including DPI scaling.
+            DrawTextW(dc,caption,-1,&label,DT_CENTER|DT_VCENTER|DT_WORDBREAK|DT_NOPREFIX);
             SelectObject(dc,old_font);
         }
     }

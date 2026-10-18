@@ -284,9 +284,9 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             Clock::now()-std::max(last_band,previous_active)>=std::chrono::seconds(2))
             break;
         // An intentional zero-band scan is a normal completed session.
-        // Allow the same two-second drain window used for nonempty scans.
+        // Keep a short drain window for late strips in empty scans; nonempty scans retain two seconds.
         if (stop_seen && pixels.empty() &&
-            Clock::now()-previous_active>=std::chrono::seconds(2)) {
+            Clock::now()-previous_active>=std::chrono::milliseconds(300)) {
             if (events && events->on_complete) events->on_complete(L"");
             std::cout << "Scan finished without image bands.\n" << std::flush;
             return true;

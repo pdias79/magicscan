@@ -65,8 +65,8 @@ uint32_t image_width = 0;
 uint32_t image_height = 0;
 bool completed = false;
 bool preview_dismissed = false; // Ignore remaining bands after a user closes the preview.
-constexpr int kCollapsedToolbarHeight = 90;
-constexpr int kExpandedToolbarHeight = 244;
+constexpr int kCollapsedToolbarHeight = 108;
+constexpr int kExpandedToolbarHeight = 262;
 bool adjustments_visible = false;
 int toolbar_height() { return adjustments_visible ? kExpandedToolbarHeight : kCollapsedToolbarHeight; }
 struct Editor {
@@ -107,7 +107,7 @@ void zoom_at(POINT p,double factor) {
 std::wstring saved_path;
 
 constexpr int kButtonWidth = 115;
-constexpr int kButtonHeight = 76;
+constexpr int kButtonHeight = 92;
 constexpr int kToolbarLeft = 12;
 constexpr int kToolbarGap = 4;
 enum class Command { Copy, CopyClose, Save, Clear, Fit, ZoomIn, ZoomOut, Rotate, Adjustments };
@@ -194,7 +194,7 @@ void draw_toolbar(HDC dc, int width) {
         }
         if (label_font) {
             HGDIOBJ old_font=SelectObject(dc,label_font);
-            RECT label{x+4,48,x+kButtonWidth-4,7+kButtonHeight-5};
+            RECT label{x+4,52,x+kButtonWidth-4,7+kButtonHeight-7};
             SetTextColor(dc,RGB(31,43,56));
             const wchar_t* caption = kTools[i].command == Command::CopyClose
                 ? L"Copier et\nfermer" : kTools[i].label;

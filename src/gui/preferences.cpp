@@ -8,6 +8,7 @@ namespace {
 constexpr int kSave=6101, kClipboard=6102, kFolder=6103, kGamma=6104,
               kApply=6105, kCancel=6106, kBrowse=6107;
 HWND preferences_window=nullptr;
+HWND preferences_notify=nullptr;
 UserSettings initial{};
 HWND field(HWND parent,int id) { return GetDlgItem(parent,id); }
 void set_font(HWND control) {
@@ -77,9 +78,8 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
                 MessageBoxW(hwnd,L"Impossible d’enregistrer les paramètres.",L"MagicScan",MB_ICONERROR);
                 return 0;
             }
-            HWND parent=GetWindow(hwnd,GW_OWNER);
             DestroyWindow(hwnd);
-            if (parent) PostMessageW(parent,kPreferencesChanged,0,0);
+            if (preferences_notify) PostMessageW(preferences_notify,kPreferencesChanged,0,0);
             return 0;
         }
         case kCancel: DestroyWindow(hwnd); return 0;
@@ -96,6 +96,7 @@ void show_preferences(HWND owner,const UserSettings& current) {
         SetForegroundWindow(preferences_window); return;
     }
     initial=current;
+    preferences_notify=owner;
     static bool registered=false;
     if (!registered) {
         WNDCLASSW cls{};
@@ -110,6 +111,6 @@ void show_preferences(HWND owner,const UserSettings& current) {
     preferences_window=CreateWindowExW(WS_EX_DLGMODALFRAME,L"MagicScanPreferences",
         L"Paramètres de MagicScan",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,
         CW_USEDEFAULT,CW_USEDEFAULT,530,355,
-        owner,nullptr,GetModuleHandleW(nullptr),nullptr);
+        nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
 }
 }

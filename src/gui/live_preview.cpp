@@ -423,7 +423,20 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         RestoreDC(dc,saved_clip);
         draw_toolbar(dc,paint_width);
         if (old_bitmap) {
+            // The trackbars are native child windows, not part of our backing bitmap.
+            // Never blit the parent surface over them while dragging their thumbs.
+            const int original_clip=SaveDC(screen_dc);
+            const HWND sliders[]={gamma_slider,brightness_slider,contrast_slider};
+            for (HWND slider : sliders) {
+                if (!slider || !IsWindowVisible(slider)) continue;
+                RECT bounds{};
+                if (GetWindowRect(slider,&bounds)) {
+                    MapWindowPoints(nullptr,hwnd,reinterpret_cast<POINT*>(&bounds),2);
+                    ExcludeClipRect(screen_dc,bounds.left,bounds.top,bounds.right,bounds.bottom);
+                }
+            }
             BitBlt(screen_dc,0,0,paint_width,paint_height,buffer_dc,0,0,SRCCOPY);
+            RestoreDC(screen_dc,original_clip);
             SelectObject(buffer_dc,old_bitmap);
         }
         if (backing_bitmap) DeleteObject(backing_bitmap);
@@ -449,7 +462,15 @@ LRESULT CALLBACK preview_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (scrolled==contrast_slider) contrast=static_cast<int>(SendMessageW(contrast_slider,TBM_GETPOS,0,0));
             update_gamma_table();
             rebuild_corrected();
-            InvalidateRect(hwnd,nullptr,FALSE);
+            // Repaint labels and pixels, but avoid invalidating the trackbars.
+            RECT image_area{};
+            GetClientRect(hwnd,&image_area);
+            image_area.top=toolbar_height();
+            InvalidateRect(hwnd,&image_area,FALSE);
+            if (adjustments_visible) {
+                RECT labels{0,kCollapsedToolbarHeight,240,toolbar_height()};
+                InvalidateRect(hwnd,&labels,FALSE);
+            }
             return 0;
         }
         break;
@@ -579,7 +600,7 @@ void ensure_window() {
     }
     if (!registered) return;
     preview = CreateWindowExW(0, L"MagicScanLivePreview", L"MagicScan - Prévisualisation et édition",
-                              WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                              WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN,
                               CW_USEDEFAULT, CW_USEDEFAULT, 900, 700,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (preview) {

@@ -729,8 +729,9 @@ void live_preview_dispatch(UINT message) {
             saved_path=e.file;
             completed=true;
             if (preview) {
-                SetWindowTextW(preview,e.file.empty()?L"MagicScan - numérisation terminée (en mémoire)":L"MagicScan - numérisation terminée (PNG enregistré)");
-                if (auto_clipboard && !copy_selected(preview))
+                SetWindowTextW(preview,accumulated.empty()?L"MagicScan - aucune image numérisée":
+                    e.file.empty()?L"MagicScan - numérisation terminée (en mémoire)":L"MagicScan - numérisation terminée (PNG enregistré)");
+                if (auto_clipboard && !accumulated.empty() && !copy_selected(preview))
                     MessageBoxW(preview,L"Impossible de copier la numérisation.",L"MagicScan",MB_ICONWARNING);
                 InvalidateRect(preview,nullptr,FALSE);
             }

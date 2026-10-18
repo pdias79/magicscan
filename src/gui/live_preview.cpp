@@ -40,10 +40,10 @@ int image_x(int x) { return static_cast<int>(std::floor((x-editor.ox)/editor.zoo
 int image_y(int y) { return static_cast<int>(std::floor((y-editor.oy)/editor.zoom)); }
 RECT selected_rect() {
     // Selection endpoints are stored in image pixel coordinates, not screen space.
-    int x1=std::clamp(editor.begin.x,0,static_cast<int>(image_width));
-    int x2=std::clamp(editor.end.x,0,static_cast<int>(image_width));
-    int y1=std::clamp(editor.begin.y,0,static_cast<int>(image_height));
-    int y2=std::clamp(editor.end.y,0,static_cast<int>(image_height));
+    int x1=std::clamp(static_cast<int>(editor.begin.x),0,static_cast<int>(image_width));
+    int x2=std::clamp(static_cast<int>(editor.end.x),0,static_cast<int>(image_width));
+    int y1=std::clamp(static_cast<int>(editor.begin.y),0,static_cast<int>(image_height));
+    int y2=std::clamp(static_cast<int>(editor.end.y),0,static_cast<int>(image_height));
     return {std::min(x1,x2),std::min(y1,y2),std::max(x1,x2),std::max(y1,y2)};
 }
 void fit_view(HWND hwnd) {

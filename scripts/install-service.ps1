@@ -15,8 +15,9 @@ $targetDir = Join-Path $env:ProgramFiles "MagicScan\Service"
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 $target = Join-Path $targetDir "magicscan-usb-service.exe"
 Copy-Item -LiteralPath $source -Destination $target -Force
-& sc.exe create MagicScanUsb "binPath= `"$target`"" "start= demand" "obj= LocalSystem" "DisplayName= MagicScan USB (diagnostic)"
-if ($LASTEXITCODE -ne 0) { throw "Creation du service echouee." }
-& sc.exe start MagicScanUsb
-if ($LASTEXITCODE -ne 0) { throw "Demarrage du service echoue. Consultez sc.exe query MagicScanUsb." }
+# Use the PowerShell SCM API wrapper, avoiding native sc.exe quoting rules.
+# With no -Credential, New-Service uses the default LocalSystem account.
+New-Service -Name "MagicScanUsb" -BinaryPathName ('"{0}"' -f $target) `
+    -DisplayName "MagicScan USB (diagnostic)" -StartupType Manual -ErrorAction Stop | Out-Null
+Start-Service -Name "MagicScanUsb" -ErrorAction Stop
 Write-Host "Service MagicScanUsb installe dans Program Files et demarre (demarrage manuel)."

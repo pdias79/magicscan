@@ -73,3 +73,22 @@ cmake --build build --config Release
 The tray icon starts continuous scan monitoring. Right-click for **Pause monitoring**, **Resume monitoring**, **Open scans folder** and **Quit**. Double-click the icon to open the scan folder. Both PNG save and CF_DIB clipboard export are enabled. Without an explicit folder argument the application uses `%USERPROFILE%\Pictures\MagicScan`.
 
 This first tray implementation still needs Windows hardware validation, elevated permissions, and UI tests. **PR #6 will add a live, band-by-band scan preview**: the scanner acquisition backend will publish decoded strip events to a separate core/controller, and the GUI thread will render the accumulating image without blocking USB polling. No GUI code should be added to the USB transport module.
+
+## Live band-by-band preview (PR #6)
+
+The tray program opens a Win32 live preview window on the first SCAN press. Each received 2592x192 RGB strip is decoded within the USB acquisition backend and delivered as a GUI-neutral callback to `core/monitor`, then queued to the GUI thread for painting. Each band is displayed as it arrives; the window remains visible after the scan stops. The existing PNG and CF_DIB clipboard outputs are retained.
+
+The three responsibilities remain separated: `src/usb/` handles SCSI only; `src/core/` controls scan sessions and file output; `src/gui/` owns Windows windows and painting. Do not perform UI work or Win32 window calls in the SCSI thread.
+
+### Hardware test (elevated interactive PowerShell)
+
+```powershell
+git fetch origin
+git switch feature/live-band-preview
+git pull origin feature/live-band-preview
+cmake -S . -B build -A x64
+cmake --build build --config Release
+.\build\Release\magicscan-tray.exe "C:\Scans"
+```
+
+Begin a scan using the physical SCAN button: the preview should appear immediately and grow by one image band every time a strip arrives. Press SCAN again to finish, then verify the saved PNG and clipboard. For this first revision, zoom/crop editing remains in the existing `magicscan --preview` tool; direct editor integration will be refined after hardware validation.

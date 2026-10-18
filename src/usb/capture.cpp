@@ -6,6 +6,7 @@
 #include <objidl.h>
 #include <gdiplus.h>
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -289,7 +290,7 @@ bool capture_first_band(const std::wstring& output_png, std::string& error) {
 }
 
 bool capture_page(const std::wstring& output_png, std::string& error,
-                  bool wait_for_start_forever) {
+                  bool wait_for_start_forever, const std::atomic_bool* stop) {
     const auto scanner = probe_scanner();
     if (!scanner.found || !scanner.nova) {
         error = "Scanner identification failed: " + scanner.error;
@@ -318,6 +319,10 @@ bool capture_page(const std::wstring& output_png, std::string& error,
     constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
     std::cout << "Ready. Press SCAN to begin, press SCAN again to finish.\n" << std::flush;
     while ((wait_for_start_forever && !session_started) || Clock::now() < deadline) {
+        if (stop && stop->load()) {
+            error = "Scan monitoring stopped";
+            return false;
+        }
         bool scanning = false;
         if (!poll_button(device.value, scanning, error)) return false;
         if (scanning && !active) {

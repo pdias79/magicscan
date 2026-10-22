@@ -231,6 +231,10 @@ bool capture_page(const std::wstring& output_png, std::string& error,
     bool band_was_ready = false;
     bool session_started = false;
     bool stop_seen = false;
+    // The button status query sends nine SCSI commands. While scanning,
+    // prioritize band availability polling rather than sending all nine on
+    // each pass. Preserve frequent button checks while waiting to start.
+    auto next_button_poll = started;
     uint32_t last_address = 0;
     uint32_t last_ready_state = 2; // Unknown initial state.
     uint64_t idle_observations = 0;
@@ -243,8 +247,14 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             error = "Scan monitoring stopped";
             return false;
         }
-        bool scanning = false;
-        if (!poll_button(device.value, scanning, error)) return false;
+        bool scanning = active;
+        const auto poll_now = Clock::now();
+        if (poll_now >= next_button_poll) {
+            if (!poll_button(device.value, scanning, error)) return false;
+            next_button_poll = Clock::now() +
+                (scanning ? std::chrono::milliseconds(200) :
+                            std::chrono::milliseconds(100));
+        }
         if (scanning && !active) {
             session_started = true;
             deadline = Clock::now() + std::chrono::minutes(5);

@@ -214,6 +214,11 @@ LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int) {
+    // Installer calls this in the original user context, before tray startup.
+    if (command_line && wcscmp(command_line, L"--startup-enable") == 0)
+        return magicscan::set_startup_enabled(true) ? 0 : 1;
+    if (command_line && wcscmp(command_line, L"--startup-disable") == 0)
+        return magicscan::set_startup_enabled(false) ? 0 : 1;
     // Session-scoped named mutex: atomic even when two shortcuts start at once.
     // A second launch never starts the USB worker or creates another tray icon.
     HANDLE single_instance = CreateMutexW(nullptr, FALSE, L"Local\\MagicScanTraySingleInstance");

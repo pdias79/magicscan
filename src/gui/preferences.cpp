@@ -6,7 +6,7 @@
 namespace magicscan {
 namespace {
 constexpr int kSave=6101, kClipboard=6102, kFolder=6103, kGamma=6104,
-              kApply=6105, kCancel=6106, kBrowse=6107;
+              kApply=6105, kCancel=6106, kBrowse=6107, kStartup=6108;
 HWND preferences_window=nullptr;
 HWND preferences_notify=nullptr;
 UserSettings initial{};
@@ -28,20 +28,23 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
                 BS_AUTOCHECKBOX|WS_TABSTOP,20,20,435,28,kSave);
         control(hwnd,L"BUTTON",L"Copier automatiquement dans le presse-papiers",
                 BS_AUTOCHECKBOX|WS_TABSTOP,20,55,435,28,kClipboard);
-        control(hwnd,L"STATIC",L"Dossier de sauvegarde :",0,20,99,340,24);
+        control(hwnd,L"BUTTON",L"Démarrer MagicScan à l’ouverture de la session Windows",
+                BS_AUTOCHECKBOX|WS_TABSTOP,20,91,465,28,kStartup);
+        control(hwnd,L"STATIC",L"Dossier de sauvegarde :",0,20,139,340,24);
         control(hwnd,L"EDIT",initial.scan_folder.c_str(),
-                WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,20,125,356,30,kFolder);
+                WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,20,165,356,30,kFolder);
         control(hwnd,L"BUTTON",L"Parcourir...",BS_PUSHBUTTON|WS_TABSTOP,
-                386,125,104,30,kBrowse);
-        control(hwnd,L"STATIC",L"Gamma par défaut (20 à 300 ; 100 = neutre) :",0,20,176,430,23);
+                386,165,104,30,kBrowse);
+        control(hwnd,L"STATIC",L"Gamma par défaut (20 à 300 ; 100 = neutre) :",0,20,216,430,23);
         control(hwnd,L"EDIT",std::to_wstring(initial.default_gamma).c_str(),
-                WS_BORDER|ES_NUMBER|WS_TABSTOP,20,201,120,29,kGamma);
+                WS_BORDER|ES_NUMBER|WS_TABSTOP,20,241,120,29,kGamma);
         control(hwnd,L"BUTTON",L"Enregistrer",BS_DEFPUSHBUTTON|WS_TABSTOP,
-                254,260,110,36,kApply);
+                254,300,110,36,kApply);
         control(hwnd,L"BUTTON",L"Annuler",BS_PUSHBUTTON|WS_TABSTOP,
-                376,260,110,36,kCancel);
+                376,300,110,36,kCancel);
         SendMessageW(field(hwnd,kSave),BM_SETCHECK,initial.auto_save?BST_CHECKED:BST_UNCHECKED,0);
         SendMessageW(field(hwnd,kClipboard),BM_SETCHECK,initial.auto_clipboard?BST_CHECKED:BST_UNCHECKED,0);
+        SendMessageW(field(hwnd,kStartup),BM_SETCHECK,startup_enabled()?BST_CHECKED:BST_UNCHECKED,0);
         return 0;
     }
     case WM_CTLCOLORSTATIC:
@@ -71,6 +74,7 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             UserSettings settings=initial;
             settings.auto_save=SendMessageW(field(hwnd,kSave),BM_GETCHECK,0,0)==BST_CHECKED;
             settings.auto_clipboard=SendMessageW(field(hwnd,kClipboard),BM_GETCHECK,0,0)==BST_CHECKED;
+            settings.start_with_windows=SendMessageW(field(hwnd,kStartup),BM_GETCHECK,0,0)==BST_CHECKED;
             wchar_t path[32768]{};
             GetWindowTextW(field(hwnd,kFolder),path,32768);
             settings.scan_folder=path;
@@ -79,6 +83,11 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             settings.default_gamma=std::clamp(_wtoi(gamma),20,300);
             if (settings.scan_folder.empty()) {
                 MessageBoxW(hwnd,L"Indiquez un dossier de sauvegarde.",L"MagicScan",MB_ICONWARNING);
+                return 0;
+            }
+            if (settings.start_with_windows != startup_enabled() &&
+                !set_startup_enabled(settings.start_with_windows)) {
+                MessageBoxW(hwnd,L"Impossible de modifier le démarrage automatique.",L"MagicScan",MB_ICONERROR);
                 return 0;
             }
             if (!save_settings(settings)) {
@@ -117,7 +126,7 @@ void show_preferences(HWND owner,const UserSettings& current) {
     if (!registered) return;
     preferences_window=CreateWindowExW(WS_EX_DLGMODALFRAME,L"MagicScanPreferences",
         L"Paramètres de MagicScan",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_VISIBLE,
-        CW_USEDEFAULT,CW_USEDEFAULT,530,355,
+        CW_USEDEFAULT,CW_USEDEFAULT,530,395,
         nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
 }
 }

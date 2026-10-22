@@ -7,12 +7,12 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $Version) {
     $cmake = Get-Content (Join-Path $root "CMakeLists.txt") -Raw
-    if ($cmake -notmatch 'project\(magicscan VERSION (\d+\.\d+\.\d+)') {
+    if ($cmake -notmatch 'project\(magicscan VERSION (\d+\.\d+(?:\.\d+)?)') {
         throw "Impossible de lire la version dans CMakeLists.txt"
     }
     $Version = $Matches[1]
 }
-if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version invalide : $Version" }
+if ($Version -notmatch '^\d+\.\d+(?:\.\d+)?$') { throw "Version invalide : $Version" }
 $build = if ([System.IO.Path]::IsPathRooted($BuildDir)) { $BuildDir } else { Join-Path $root $BuildDir }
 $output = if ([System.IO.Path]::IsPathRooted($OutputDir)) { $OutputDir } else { Join-Path $root $OutputDir }
 $bin = Join-Path $build "Release"

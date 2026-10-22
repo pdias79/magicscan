@@ -18,8 +18,9 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $cmake = Get-Content CMakeLists.txt -Raw
           if ($cmake -notmatch 'project\(magicscan VERSION ([0-9]+[.][0-9]+(?:[.][0-9]+)?)') { throw "Version CMake introuvable" }
+          $cmakeVersion = $Matches[1]
           if ($tag -notmatch '^v[0-9]+[.][0-9]+$') { throw "Format de tag invalide : $tag" }
-          if ($tag -ne "v$($Matches[1])") { throw "Le tag $tag ne correspond pas a la version CMake $($Matches[1])" }
+          if ($tag -ne "v$cmakeVersion") { throw "Le tag $tag ne correspond pas a la version CMake $cmakeVersion" }
       - name: Configure
         run: cmake -S . -B build -A x64
       - name: Build

@@ -283,10 +283,10 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             // without establishing the scanner's ordering semantics.
             const auto band_number = pixels.size() / kBandSize;
             std::cout << "Band " << band_number << " read at address "
-                      << address << "\\n" << std::flush;
+                      << address << "\n" << std::flush;
             const std::string trace = "MagicScan band " +
                 std::to_string(band_number) + " scanner address " +
-                std::to_string(address) + "\\n";
+                std::to_string(address) + "\n";
             OutputDebugStringA(trace.c_str());
         }
         if (stop_seen && !pixels.empty() &&

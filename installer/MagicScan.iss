@@ -41,8 +41,14 @@ Name: "{group}\Désinstaller MagicScan"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup-enable"; Flags: runhidden waituntilterminated runasoriginaluser; Tasks: userautostart
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup-disable"; Flags: runhidden waituntilterminated runasoriginaluser; Check: not WizardIsTaskSelected('userautostart')
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup-disable"; Flags: runhidden waituntilterminated runasoriginaluser; Check: ShouldDisableStartup
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\Installer\manage-service.ps1"" -Action Install -ServiceExe ""{app}\Service\magicscan-usb-service.exe"""; Flags: runhidden waituntilterminated
 
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\Installer\manage-service.ps1"" -Action Uninstall"; RunOnceId: "MagicScanUsbServiceRemoval"; Flags: runhidden waituntilterminated
+
+[Code]
+function ShouldDisableStartup(): Boolean;
+begin
+  Result := not WizardIsTaskSelected('userautostart');
+end;

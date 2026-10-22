@@ -231,7 +231,14 @@ bool capture_page(const std::wstring& output_png, std::string& error,
     bool band_was_ready = false;
     bool session_started = false;
     bool stop_seen = false;
+    // The button status query sends nine SCSI commands. While scanning,
+    // prioritize band availability polling rather than sending all nine on
+    // each pass. Preserve frequent button checks while waiting to start.
+    auto next_button_poll = started;
     uint32_t last_address = 0;
+    uint32_t last_ready_state = 2; // Unknown initial state.
+    uint64_t idle_observations = 0;
+    uint64_t ready_edges = 0;
     std::vector<uint8_t> pixels;
     constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
     std::cout << "Ready. Press SCAN to begin, press SCAN again to finish.\n" << std::flush;
@@ -240,8 +247,14 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             error = "Scan monitoring stopped";
             return false;
         }
-        bool scanning = false;
-        if (!poll_button(device.value, scanning, error)) return false;
+        bool scanning = active;
+        const auto poll_now = Clock::now();
+        if (poll_now >= next_button_poll) {
+            if (!poll_button(device.value, scanning, error)) return false;
+            next_button_poll = Clock::now() +
+                (scanning ? std::chrono::milliseconds(200) :
+                            std::chrono::milliseconds(100));
+        }
         if (scanning && !active) {
             session_started = true;
             deadline = Clock::now() + std::chrono::minutes(5);
@@ -258,6 +271,16 @@ bool capture_page(const std::wstring& output_png, std::string& error,
 
         uint32_t ready=0, address=0;
         if (!poll_band(device.value,ready,address,error)) return false;
+        if (ready != last_ready_state) {
+            const std::string edge = "MagicScan ready transition " +
+                std::to_string(last_ready_state) + " -> " +
+                std::to_string(ready) + " at scanner address " +
+                std::to_string(address) + "\n";
+            OutputDebugStringA(edge.c_str());
+            if (ready == 1) ++ready_edges;
+            last_ready_state = ready;
+        }
+        if (ready == 0) ++idle_observations;
         if (ready==0) {
             seen_idle = true;
             band_was_ready = false;
@@ -269,16 +292,36 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             if (pixels.size()+kBandSize>kMaxPageBytes) {
                 error="Page exceeds 256 MiB safety memory budget"; return false;
             }
+            const uint32_t previous_address = last_address;
             const size_t offset_before = pixels.size();
+            const auto read_started = Clock::now();
             if (!read_band(device.value,address,pixels,error)) return false;
+            const auto read_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - read_started).count();
+            const auto delivery_started = Clock::now();
             if (events && events->on_band) {
                 std::vector<uint8_t> band(pixels.begin() + static_cast<ptrdiff_t>(offset_before), pixels.end());
                 events->on_band(band, kWidth, kLines);
             }
+            const auto delivery_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - delivery_started).count();
             last_band=Clock::now();
             last_address=address;
             band_was_ready=true;
-            std::cout << "Band " << (pixels.size()/kBandSize) << " read\n" << std::flush;
+            // Record source order and hardware memory address for diagnosing
+            // fast scans. The address may wrap/reuse; do not sort by address
+            // without establishing the scanner's ordering semantics.
+            const auto band_number = pixels.size() / kBandSize;
+            std::cout << "Band " << band_number << " read at address "
+                      << address << "\n" << std::flush;
+            const std::string trace = "MagicScan band " +
+                std::to_string(band_number) + " scanner address " +
+                std::to_string(address) + " read_ms " +
+                std::to_string(read_ms) + " delivery_ms " +
+                std::to_string(delivery_ms) + " delta_address " +
+                std::to_string(static_cast<int64_t>(address) -
+                               static_cast<int64_t>(previous_address)) + "\n";
+            OutputDebugStringA(trace.c_str());
         }
         if (stop_seen && !pixels.empty() &&
             Clock::now()-std::max(last_band,previous_active)>=std::chrono::seconds(2))
@@ -292,7 +335,11 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             return true;
         }
         if (events && events->on_tick) events->on_tick();
-        Sleep(60);
+        // Poll the NOVA ready/address metadata promptly between full-band
+        // reads. At fast hand movement a 60 ms idle interval can miss a
+        // transient ready/address change. Keep the USB transfers synchronous:
+        // no additional threads or sleeps inside the band read itself.
+        Sleep(10);
     }
     if (pixels.empty()) {
         error="Timed out without capturing any image strips"; return false;
@@ -301,6 +348,11 @@ bool capture_page(const std::wstring& output_png, std::string& error,
         error="Scan did not complete within the capture timeout; no truncated PNG was saved";
         return false;
     }
+    const std::string stats = "MagicScan capture summary bands " +
+        std::to_string(pixels.size()/kBandSize) +
+        " ready_edges " + std::to_string(ready_edges) +
+        " idle_observations " + std::to_string(idle_observations) + "\n";
+    OutputDebugStringA(stats.c_str());
     const size_t bands=pixels.size()/kBandSize;
     // Empty output path explicitly means memory-only capture (no disk writes).
     if (!output_png.empty() && !write_page_png(output_png,pixels,bands,error)) return false;

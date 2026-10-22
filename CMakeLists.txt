@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.18)
 project(magicscan VERSION 0.7 LANGUAGES CXX RC)
+# CMake accepts 0.7 while Windows VERSIONINFO requires four numeric parts.
+set(MAGICSCAN_RC_PATCH 0)
+if(NOT PROJECT_VERSION_PATCH STREQUAL "")
+    set(MAGICSCAN_RC_PATCH ${PROJECT_VERSION_PATCH})
+endif()
 
 if(NOT WIN32)
     message(FATAL_ERROR "MagicScan now targets Windows only (C++17 + Win32).")

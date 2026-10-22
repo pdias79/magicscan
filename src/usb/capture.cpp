@@ -301,7 +301,11 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             return true;
         }
         if (events && events->on_tick) events->on_tick();
-        Sleep(60);
+        // Poll the NOVA ready/address metadata promptly between full-band
+        // reads. At fast hand movement a 60 ms idle interval can miss a
+        // transient ready/address change. Keep the USB transfers synchronous:
+        // no additional threads or sleeps inside the band read itself.
+        Sleep(10);
     }
     if (pixels.empty()) {
         error="Timed out without capturing any image strips"; return false;

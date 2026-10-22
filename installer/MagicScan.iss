@@ -1,5 +1,5 @@
 #define MyAppName "MagicScan"
-#define MyAppVersion "0.6.0"
+#define MyAppVersion "0.7"
 #define MyAppPublisher "MagicScan"
 #define MyAppExeName "magicscan-tray.exe"
 

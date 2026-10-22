@@ -269,8 +269,12 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             if (pixels.size()+kBandSize>kMaxPageBytes) {
                 error="Page exceeds 256 MiB safety memory budget"; return false;
             }
+            const uint32_t previous_address = last_address;
             const size_t offset_before = pixels.size();
+            const auto read_started = Clock::now();
             if (!read_band(device.value,address,pixels,error)) return false;
+            const auto read_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - read_started).count();
             if (events && events->on_band) {
                 std::vector<uint8_t> band(pixels.begin() + static_cast<ptrdiff_t>(offset_before), pixels.end());
                 events->on_band(band, kWidth, kLines);
@@ -286,7 +290,10 @@ bool capture_page(const std::wstring& output_png, std::string& error,
                       << address << "\n" << std::flush;
             const std::string trace = "MagicScan band " +
                 std::to_string(band_number) + " scanner address " +
-                std::to_string(address) + "\n";
+                std::to_string(address) + " read_ms " +
+                std::to_string(read_ms) + " delta_address " +
+                std::to_string(static_cast<int64_t>(address) -
+                               static_cast<int64_t>(previous_address)) + "\n";
             OutputDebugStringA(trace.c_str());
         }
         if (stop_seen && !pixels.empty() &&

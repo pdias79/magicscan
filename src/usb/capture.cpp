@@ -278,7 +278,16 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             last_band=Clock::now();
             last_address=address;
             band_was_ready=true;
-            std::cout << "Band " << (pixels.size()/kBandSize) << " read\n" << std::flush;
+            // Record source order and hardware memory address for diagnosing
+            // fast scans. The address may wrap/reuse; do not sort by address
+            // without establishing the scanner's ordering semantics.
+            const auto band_number = pixels.size() / kBandSize;
+            std::cout << "Band " << band_number << " read at address "
+                      << address << "\\n" << std::flush;
+            const std::string trace = "MagicScan band " +
+                std::to_string(band_number) + " scanner address " +
+                std::to_string(address) + "\\n";
+            OutputDebugStringA(trace.c_str());
         }
         if (stop_seen && !pixels.empty() &&
             Clock::now()-std::max(last_band,previous_active)>=std::chrono::seconds(2))

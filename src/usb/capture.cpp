@@ -298,10 +298,13 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             if (!read_band(device.value,address,pixels,error)) return false;
             const auto read_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 Clock::now() - read_started).count();
+            const auto delivery_started = Clock::now();
             if (events && events->on_band) {
                 std::vector<uint8_t> band(pixels.begin() + static_cast<ptrdiff_t>(offset_before), pixels.end());
                 events->on_band(band, kWidth, kLines);
             }
+            const auto delivery_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                Clock::now() - delivery_started).count();
             last_band=Clock::now();
             last_address=address;
             band_was_ready=true;
@@ -314,7 +317,8 @@ bool capture_page(const std::wstring& output_png, std::string& error,
             const std::string trace = "MagicScan band " +
                 std::to_string(band_number) + " scanner address " +
                 std::to_string(address) + " read_ms " +
-                std::to_string(read_ms) + " delta_address " +
+                std::to_string(read_ms) + " delivery_ms " +
+                std::to_string(delivery_ms) + " delta_address " +
                 std::to_string(static_cast<int64_t>(address) -
                                static_cast<int64_t>(previous_address)) + "\n";
             OutputDebugStringA(trace.c_str());

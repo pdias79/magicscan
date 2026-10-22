@@ -13,7 +13,7 @@ namespace magicscan::service {
 namespace {
 constexpr uint32_t kBandSize = 2592u * 192u * 3u;
 struct Header { uint32_t kind; uint32_t size; };
-enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6 };
+enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6, kSequencedBand = 7 };
 
 bool write_bytes(HANDLE pipe, const void* data, size_t size, HANDLE stop_event) {
     const auto* bytes = static_cast<const unsigned char*>(data);
@@ -45,6 +45,15 @@ bool send(HANDLE pipe, uint32_t kind, const std::vector<uint8_t>* band, HANDLE s
     const Header header{kind, band ? static_cast<uint32_t>(band->size()) : 0};
     return write_bytes(pipe, &header, sizeof(header), stop_event) &&
            (!band || write_bytes(pipe, band->data(), band->size(), stop_event));
+}
+bool send_sequenced_band(HANDLE pipe, uint32_t sequence,
+                         const std::vector<uint8_t>& band, HANDLE stop_event) {
+    const Header header{kSequencedBand, static_cast<uint32_t>(band.size() + sizeof(sequence))};
+    // One writer, a byte-stream pipe, and an explicit sequence number: the
+    // client can detect missing/duplicated bands rather than silently corrupting a page.
+    return write_bytes(pipe, &header, sizeof(header), stop_event) &&
+           write_bytes(pipe, &sequence, sizeof(sequence), stop_event) &&
+           write_bytes(pipe, band.data(), band.size(), stop_event);
 }
 } // namespace
 
@@ -83,11 +92,15 @@ void run_stream(HANDLE stop_event) {
             std::atomic_bool cancel{false};
             auto last_pulse = std::chrono::steady_clock::now();
             ScanEvents events{};
-            events.on_start = [&] { if (!send(pipe, kStart, nullptr, stop_event)) cancel = true; };
+            uint32_t next_band = 0;
+            events.on_start = [&] {
+                next_band = 0;
+                if (!send(pipe, kStart, nullptr, stop_event)) cancel = true;
+            };
             events.on_connected = [&] { if (!send(pipe, kConnected, nullptr, stop_event)) cancel = true; };
             events.on_band = [&](const std::vector<uint8_t>& pixels, uint32_t w, uint32_t h) {
                 if (w != 2592 || h != 192 || pixels.size() != kBandSize ||
-                    !send(pipe, kBand, &pixels, stop_event)) cancel = true;
+                    !send_sequenced_band(pipe, next_band++, pixels, stop_event)) cancel = true;
             };
             events.on_complete = [&](const std::wstring&) {
                 if (!send(pipe, kFinish, nullptr, stop_event)) cancel = true;

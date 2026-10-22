@@ -232,6 +232,9 @@ bool capture_page(const std::wstring& output_png, std::string& error,
     bool session_started = false;
     bool stop_seen = false;
     uint32_t last_address = 0;
+    uint32_t last_ready_state = 2; // Unknown initial state.
+    uint64_t idle_observations = 0;
+    uint64_t ready_edges = 0;
     std::vector<uint8_t> pixels;
     constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
     std::cout << "Ready. Press SCAN to begin, press SCAN again to finish.\n" << std::flush;
@@ -258,6 +261,16 @@ bool capture_page(const std::wstring& output_png, std::string& error,
 
         uint32_t ready=0, address=0;
         if (!poll_band(device.value,ready,address,error)) return false;
+        if (ready != last_ready_state) {
+            const std::string edge = "MagicScan ready transition " +
+                std::to_string(last_ready_state) + " -> " +
+                std::to_string(ready) + " at scanner address " +
+                std::to_string(address) + "\n";
+            OutputDebugStringA(edge.c_str());
+            if (ready == 1) ++ready_edges;
+            last_ready_state = ready;
+        }
+        if (ready == 0) ++idle_observations;
         if (ready==0) {
             seen_idle = true;
             band_was_ready = false;
@@ -321,6 +334,11 @@ bool capture_page(const std::wstring& output_png, std::string& error,
         error="Scan did not complete within the capture timeout; no truncated PNG was saved";
         return false;
     }
+    const std::string stats = "MagicScan capture summary bands " +
+        std::to_string(pixels.size()/kBandSize) +
+        " ready_edges " + std::to_string(ready_edges) +
+        " idle_observations " + std::to_string(idle_observations) + "\n";
+    OutputDebugStringA(stats.c_str());
     const size_t bands=pixels.size()/kBandSize;
     // Empty output path explicitly means memory-only capture (no disk writes).
     if (!output_png.empty() && !write_page_png(output_png,pixels,bands,error)) return false;

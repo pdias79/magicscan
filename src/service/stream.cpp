@@ -16,7 +16,7 @@ constexpr uint32_t kWidth = 2592, kRows = 192;
 constexpr uint32_t kBytes = kWidth * kRows * 3;
 constexpr size_t kMaxPageBytes = 256ull * 1024 * 1024;
 struct Header { uint32_t kind; uint32_t size; };
-enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6 };
+enum : uint32_t { kStart = 1, kBand = 2, kFinish = 3, kConnected = 4, kFailure = 5, kHeartbeat = 6, kSequencedBand = 7 };
 bool read_exact(HANDLE pipe, void* data, DWORD length, const std::atomic_bool* stop,
                 bool wait_for_header = false) {
     // Poll only between messages, never for image payloads: polling each
@@ -72,6 +72,8 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
     // Set bounded synchronous reads so Pause/Quit cannot hang indefinitely.
     // Cancellation from another thread uses CancelSynchronousIo on worker thread.
     std::vector<uint8_t> page;
+    uint32_t expected_band = 0;
+    bool scan_started = false;
     if (events && events->on_connected) events->on_connected();
     while (!stop || !stop->load()) {
         Header head{};
@@ -80,9 +82,20 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
              head.kind == kFailure || head.kind == kHeartbeat) && head.size != 0) { break; }
         if (head.kind == kStart) {
             page.clear();
+            expected_band = 0;
+            scan_started = true;
             if (events && events->on_start) events->on_start();
-        } else if (head.kind == kBand && head.size == kBytes &&
-                   page.size() <= kMaxPageBytes - kBytes) {
+        } else if ((head.kind == kSequencedBand && head.size == kBytes + sizeof(uint32_t)) ||
+                   (head.kind == kBand && head.size == kBytes)) {
+            if (!scan_started || page.size() > kMaxPageBytes - kBytes) break;
+            if (head.kind == kSequencedBand) {
+                uint32_t received_sequence = 0;
+                if (!read_exact(pipe, &received_sequence, sizeof(received_sequence), stop))
+                    break;
+                // Don't silently accept a skipped or duplicate image strip.
+                if (received_sequence != expected_band) break;
+            }
+            ++expected_band;
             const size_t offset = page.size();
             page.resize(offset + kBytes);
             if (!read_exact(pipe, page.data() + offset, kBytes, stop)) { break; }
@@ -101,6 +114,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
             }
             if (events && events->on_complete) events->on_complete(filename);
             page.clear();
+            scan_started = false;
         } else if (head.kind == kHeartbeat) {
             continue;
         } else if (head.kind == kConnected) {
@@ -108,6 +122,7 @@ int monitor_remote(const std::wstring& directory, bool auto_save,
         } else if (head.kind == kFailure) {
             if (events && events->on_disconnected) events->on_disconnected();
             page.clear();
+            scan_started = false;
         } else {
             break;
         }

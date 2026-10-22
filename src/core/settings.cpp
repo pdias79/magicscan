@@ -27,7 +27,9 @@ bool set_startup_enabled(bool enabled) {
         std::vector<wchar_t> path(32768);
         const DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
         if (!length || length >= path.size()) { RegCloseKey(key); return false; }
-        const std::wstring command = L"\\\"" + std::wstring(path.data(), length) + L"\\\"";
+        std::wstring command(1, static_cast<wchar_t>(34));
+        command.append(path.data(), length);
+        command.push_back(static_cast<wchar_t>(34));
         result = RegSetValueExW(key, kRunName, 0, REG_SZ,
              reinterpret_cast<const BYTE*>(command.c_str()),
              static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
